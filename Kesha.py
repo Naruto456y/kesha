@@ -32,97 +32,10 @@ import mouse
 from pydub import AudioSegment
 from pydub.playback import play
 
-class manager():
-    """Это класс помагатор для меня"""
-    
-    def open_file(name):
-        """Открывает файл с помощью терминала"""
-        os.system(f'start cmd /k python "{name}"')
-
-    def search_file_path(file_path):
-        """Помагает узнавать путь к файлу"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        absolute_path = os.path.join(current_dir, file_path)
-        return absolute_path
-
-    def play_music(file_path):
-        """Воспроизводит mp3 файлы"""
-        try:
-            pygame.mixer.init()
-            pygame.mixer.music.load(file_path)
-            pygame.mixer.music.play()
-            
-            # Ждем пока музыка играет
-            while pygame.mixer.music.get_busy():
-                time.sleep(0.1)
-                
-        except Exception as e:
-            print(f"Ошибка при воспроизведении: {e}")
-
-    def listen_text(listen_seconds=5):
-        """
-        Слушает микрофон в течение указанного времени и возвращает распознанный текст.
-        
-        :param listen_seconds: количество секунд для прослушивания (по умолчанию 5)
-        :return: распознанный текст или None в случае ошибки
-        """
-        recognizer = sr.Recognizer()
-        microphone = sr.Microphone()
-        try:
-                with microphone as source:
-                    print("Слушаю... (говорите)")
-                    recognizer.adjust_for_ambient_noise(source)  # Уменьшение шума
-                    audio = recognizer.listen(source, timeout=listen_seconds, phrase_time_limit=listen_seconds)
-                
-                text = recognizer.recognize_google(audio, language="ru-RU")  # Для русского языка
-                return text
-        except AssertionError:
-                print("Время ожидания истекло, речь не обнаружена.")
-                return None            
-        except sr.WaitTimeoutError:
-                print("Время ожидания истекло, речь не обнаружена.")
-                return None
-        except sr.UnknownValueError:
-                print("Речь не распознана.")
-                return None
-        except Exception as e:
-                print(f"Произошла ошибка: {e}")
-                return None
-
-    def say(text, lang='ru'):
-        """Озвучка текста с использованием gTTS и pydub"""
-        try:
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as fp:
-                temp_file = fp.name
-            
-            tts = gTTS(text=text, lang=lang)
-            tts.save(temp_file)
-            
-            sound = AudioSegment.from_mp3(temp_file)
-            play(sound)
-            
-        finally:
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
-
-def open_timer_file():
-    """Открывает файл Таймер.py из той же директории"""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    timer_path = os.path.join(current_dir, 'Таймер.py')
-    
-    if os.path.exists(timer_path):
-        try:
-            manager.open_file(timer_path)
-            return True
-        except Exception as e:
-            print(f"Ошибка при открытии файла: {e}")
-            manager.say("Не удалось запустить Таймер")
-            return False
-    else:
-        print("Файл Таймер.py не найден в директории:")
-        print(current_dir)
-        manager.say("Не удалось запустить Таймер")
-        return False
+def start(name, game = False):
+    """Открывает файл или паппку в этой папке"""
+    path = __file__.replace('Kesha.py', name)
+    os.startfile(path)
 
 def search_and_open_youtube(query):
     """
@@ -144,805 +57,6 @@ def search_and_open_youtube(query):
     # Открываем ссылку в браузере
     webbrowser.open(video_url)
     print(f"Открываю видео: {results[0]['title']}")
-
-def quiz():
-    questions = {
-        "Общие знания": [
-        {
-        "question": "Сколько планет в Солнечной системе?",
-        "options": ["7", "8", "9", "10"],
-        "answer": "8"
-        },
-        {
-        "question": "Какая самая длинная река в мире?",
-        "options": ["Амазонка", "Нил", "Янцзы", "Миссисипи"],
-        "answer": "Амазонка"
-        },
-        {
-        "question": "Столица Австралии?",
-        "options": ["Сидней", "Мельбурн", "Канберра", "Брисбен"],
-        "answer": "Канберра"
-        },
-        {
-        "question": "Сколько континентов на Земле?",
-        "options": ["5", "6", "7", "8"],
-        "answer": "6"
-        },
-        {
-        "question": "Какая самая большая страна по площади?",
-        "options": ["Китай", "США", "Канада", "Россия"],
-        "answer": "Россия"
-        },
-        {
-        "question": "Какое животное является символом Австралии?",
-        "options": ["Коала", "Кенгуру", "Утконос", "Эму"],
-        "answer": "Кенгуру"
-        },
-        {
-        "question": "Как называется самая большая пустыня в мире?",
-        "options": ["Гоби", "Сахара", "Аравийская", "Антарктическая"],
-        "answer": "Антарктическая"
-        },
-        {
-        "question": "В каком году началась Вторая мировая война?",
-        "options": ["1937", "1939", "1941", "1943"],
-        "answer": "1939"
-        },
-        {
-        "question": "Какой газ преобладает в составе атмосферы Земли?",
-        "options": ["Кислород", "Углекислый газ", "Азот", "Аргон"],
-        "answer": "Азот"
-        },
-        {
-        "question": "Какой океан самый большой по площади?",
-        "options": ["Атлантический", "Индийский", "Северный Ледовитый", "Тихий"],
-        "answer": "Тихий"
-        },
-        {
-        "question": "Какая страна имеет самое большое население в мире?",
-        "options": ["Индия", "США", "Китай", "Индонезия"],
-        "answer": "Индия"
-        },
-        {
-        "question": "Как называется самая высокая гора в мире?",
-        "options": ["Килиманджаро", "Эверест", "Аконкагуа", "Мак-Кинли"],
-        "answer": "Эверест"
-        },
-        {
-        "question": "Кто изобрел телефон?",
-        "options": ["Томас Эдисон", "Александр Белл", "Никола Тесла", "Гульельмо Маркони"],
-        "answer": "Александр Белл"
-        },
-        {
-        "question": "Какое самое глубокое озеро в мире?",
-        "options": ["Виктория", "Байкал", "Танганьика", "Каспийское море"],
-        "answer": "Байкал"
-        },
-        {
-        "question": "В каком году человек впервые полетел в космос?",
-        "options": ["1957", "1961", "1969", "1975"],
-        "answer": "1961"
-        },
-        {
-        "question": "Какой химический элемент обозначается как 'Hg'?",
-        "options": ["Серебро", "Золото", "Ртуть", "Германий"],
-        "answer": "Ртуть"
-        },
-        {
-        "question": "Какое самое быстрое наземное животное?",
-        "options": ["Лев", "Гепард", "Антилопа гну", "Борзая собака"],
-        "answer": "Гепард"
-        },
-        {
-        "question": "Сколько цветов в радуге согласно традиционному делению?",
-        "options": ["5", "6", "7", "8"],
-        "answer": "7"
-        },
-        {
-        "question": "Какой мобильный оператор использует логотип в виде пчелы?",
-        "options": ["МТС", "Билайн", "МегаФон", "Tele2"],
-        "answer": "Билайн"
-        },
-        {
-        "question": "Как называется самая популярная ОС для смартфонов?",
-        "options": ["iOS", "Android", "HarmonyOS", "Windows Phone"],
-        "answer": "Android"
-        }
-        ],
-        "Литература": [
-        {
-        "question": "Кто написал 'Войну и мир'?",
-        "options": ["Достоевский", "Толстой", "Чехов", "Тургенев"],
-        "answer": "Толстой"
-        },
-        {
-        "question": "Кто написал 'Ромео и Джульетту'?",
-        "options": ["Чарльз Диккенс", "Уильям Шекспир", "Лев Толстой", "Марк Твен"],
-        "answer": "Уильям Шекспир"
-        },
-        {
-        "question": "Кто автор 'Преступления и наказания'?",
-        "options": ["Толстой", "Достоевский", "Гоголь", "Тургенев"],
-        "answer": "Достоевский"
-        },
-        {
-        "question": "Какой поэт написал 'Я помню чудное мгновенье...'?",
-        "options": ["Лермонтов", "Пушкин", "Тютчев", "Некрасов"],
-        "answer": "Пушкин"
-        },
-        {
-        "question": "Кто создал Шерлока Холмса?",
-        "options": ["Агата Кристи", "Артур Конан Дойл", "Стивен Кинг", "Чарльз Диккенс"],
-        "answer": "Артур Конан Дойл"
-        },
-        {
-        "question": "Какое произведение написал Михаил Булгаков?",
-        "options": ["Тихий Дон", "Доктор Живаго", "Мастер и Маргарита", "Петр Первый"],
-        "answer": "Мастер и Маргарита"
-        },
-        {
-        "question": "Кто автор 'Гарри Поттера'?",
-        "options": ["Дж. Р. Р. Толкин", "Дж. К. Роулинг", "Клайв Льюис", "Стивен Кинг"],
-        "answer": "Дж. К. Роулинг"
-        },
-        {
-        "question": "Какое произведение принадлежит перу Эрнеста Хемингуэя?",
-        "options": ["1984", "Старик и море", "Улисс", "Над пропастью во ржи"],
-        "answer": "Старик и море"
-        },
-        {
-        "question": "Кто написал 'Три мушкетера'?",
-        "options": ["Виктор Гюго", "Александр Дюма", "Жюль Верн", "Оноре де Бальзак"],
-        "answer": "Александр Дюма"
-        },
-        {
-        "question": "Какой русский писатель автор 'Мертвых душ'?",
-        "options": ["Толстой", "Достоевский", "Гоголь", "Тургенев"],
-        "answer": "Гоголь"
-        },
-        {
-        "question": "Кто написал 'Алису в Стране чудес'?",
-        "options": ["Льюис Кэрролл", "Дж. М. Барри", "Редьярд Киплинг", "Алан Милн"],
-        "answer": "Льюис Кэрролл"
-        },
-        {
-        "question": "Какое произведение принадлежит Льву Толстому?",
-        "options": ["Отцы и дети", "Обломов", "Анна Каренина", "Идиот"],
-        "answer": "Анна Каренина"
-        },
-        {
-        "question": "Кто автор 'Фауста'?",
-        "options": ["Фридрих Шиллер", "Иоганн Вольфганг Гёте", "Генрих Гейне", "Франц Кафка"],
-        "answer": "Иоганн Вольфганг Гёте"
-        },
-        {
-        "question": "Какое произведение написал Антон Чехов?",
-        "options": ["Вишневый сад", "На дне", "Отцы и дети", "Дворянское гнездо"],
-        "answer": "Вишневый сад"
-        },
-        {
-        "question": "Кто автор 'Властелина колец'?",
-        "options": ["Дж. К. Роулинг", "Дж. Р. Р. Толкин", "Клайв Льюис", "Терри Пратчетт"],
-        "answer": "Дж. Р. Р. Толкин"
-        },
-        {
-        "question": "Какое произведение принадлежит Джорджу Оруэллу?",
-        "options": ["451° по Фаренгейту", "1984", "О дивный новый мир", "Мы"],
-        "answer": "1984"
-        },
-        {
-        "question": "Кто написал 'Дон Кихота'?",
-        "options": ["Мигель де Сервантес", "Федерико Гарсиа Лорка", "Пабло Неруда", "Габриэль Гарсиа Маркес"],
-        "answer": "Мигель де Сервантес"
-        },
-        {
-        "question": "Какое произведение принадлежит Федору Достоевскому?",
-        "options": ["Война и мир", "Идиот", "Отцы и дети", "Обломов"],
-        "answer": "Идиот"
-        },
-        {
-        "question": "Кто автор 'Маленького принца'?",
-        "options": ["Антуан де Сент-Экзюпери", "Жюль Верн", "Виктор Гюго", "Гюстав Флобер"],
-        "answer": "Антуан де Сент-Экзюпери"
-        },
-        {
-        "question": "Какое произведение написал Николай Гоголь?",
-        "options": ["Ревизор", "Горе от ума", "Гроза", "Бесы"],
-        "answer": "Ревизор"
-        }
-        ],
-        "Наука": [
-        {
-        "question": "Сколько элементов в периодической таблице?",
-        "options": ["108", "118", "128", "138"],
-        "answer": "118"
-        },
-        {
-        "question": "Какой химический элемент обозначается как 'Au'?",
-        "options": ["Серебро", "Железо", "Золото", "Алюминий"],
-        "answer": "Золото"
-        },
-        {
-        "question": "Какой газ преобладает в составе атмосферы Земли?",
-        "options": ["Кислород", "Углекислый газ", "Азот", "Аргон"],
-        "answer": "Азот"
-        },
-        {
-        "question": "Сколько хромосом у здорового человека?",
-        "options": ["23", "46", "64", "32"],
-        "answer": "46"
-        },
-        {
-        "question": "Какая самая высокая гора в Солнечной системе?",
-        "options": ["Эверест", "Олимп (Марс)", "Килиманджаро", "Мауна-Кеа"],
-        "answer": "Олимп (Марс)"
-        },
-        {
-        "question": "Как называется самая большая кость в человеческом теле?",
-        "options": ["Позвоночник", "Бедренная", "Череп", "Лопатка"],
-        "answer": "Бедренная"
-        },
-        {
-        "question": "Какое самое быстрое наземное животное?",
-        "options": ["Лев", "Гепард", "Антилопа", "Леопард"],
-        "answer": "Гепард"
-        },
-        {
-        "question": "Какой ученый сформулировал теорию относительности?",
-        "options": ["Исаак Ньютон", "Альберт Эйнштейн", "Никола Тесла", "Стивен Хокинг"],
-        "answer": "Альберт Эйнштейн"
-        },
-        {
-        "question": "Какой орган человеческого тела самый большой?",
-        "options": ["Печень", "Мозг", "Кожа", "Сердце"],
-        "answer": "Кожа"
-        },
-        {
-        "question": "Какая планета ближе всего к Солнцу?",
-        "options": ["Венера", "Марс", "Меркурий", "Земля"],
-        "answer": "Меркурий"
-        },
-        {
-        "question": "Как называется наука о растениях?",
-        "options": ["Зоология", "Ботаника", "Биология", "Экология"],
-        "answer": "Ботаника"
-        },
-        {
-        "question": "Какой элемент самый легкий?",
-        "options": ["Гелий", "Водород", "Литий", "Кислород"],
-        "answer": "Водород"
-        },
-        {
-        "question": "Сколько костей в теле взрослого человека?",
-        "options": ["156", "206", "256", "306"],
-        "answer": "206"
-        },
-        {
-        "question": "Как называется процесс фотосинтеза у растений?",
-        "options": ["Поглощение кислорода", "Выделение углекислого газа",
-        "Преобразование света в энергию", "Испарение воды"],
-        "answer": "Преобразование света в энергию"
-        },
-        {
-        "question": "Какой газ растения поглощают днем?",
-        "options": ["Кислород", "Углекислый газ", "Азот", "Водород"],
-        "answer": "Углекислый газ"
-        },
-        {
-        "question": "Какая самая твердая природная субстанция в организме человека?",
-        "options": ["Кость", "Зубная эмаль", "Ноготь", "Хрящ"],
-        "answer": "Зубная эмаль"
-        },
-        {
-        "question": "Какой ученый открыл закон всемирного тяготения?",
-        "options": ["Галилео Галилей", "Исаак Ньютон", "Николай Коперник", "Альберт Эйнштейн"],
-        "answer": "Исаак Ньютон"
-        },
-        {
-        "question": "Как называется самая маленькая частица вещества?",
-        "options": ["Молекула", "Атом", "Электрон", "Кварк"],
-        "answer": "Атом"
-        },
-        {
-        "question": "Какой элемент является основой органической химии?",
-        "options": ["Кислород", "Углерод", "Водород", "Азот"],
-        "answer": "Углерод"
-        },
-        {
-        "question": "Какой витамин вырабатывается в коже под действием солнечного света?",
-        "options": ["Витамин A", "Витамин C", "Витамин D", "Витамин E"],
-        "answer": "Витамин D"
-        }
-        ],
-        "IT": [
-        {
-        "question": "Какой язык программирования самый популярный в 2023 году?",
-        "options": ["Python", "JavaScript", "Java", "C++"],
-        "answer": "Python"
-        },
-        {
-        "question": "Что означает аббревиатура 'HTTP'?",
-        "options": ["HyperText Transfer Protocol",
-        "High Transfer Text Protocol",
-        "Hyper Transfer Text Protocol",
-        "HighText Transfer Protocol"],
-        "answer": "HyperText Transfer Protocol"
-        },
-        {
-        "question": "Какой оператор в Python используется для целочисленного деления?",
-        "options": ["/", "//", "%", ""],
-        "answer": "//"
-        },
-        {
-        "question": "Что выведет print(2 + 2 * 2) в Python?",
-        "options": ["6", "8", "4", "Ошибку"],
-        "answer": "6"
-        },
-        {
-        "question": "Как называется стандартная библиотека Python для работы с регулярными выражениями?",
-        "options": ["regex", "re", "pyregex", "pattern"],
-        "answer": "re"
-        },
-        {
-        "question": "Какой тип данных в Python является неизменяемым?",
-        "options": ["Список", "Словарь", "Множество", "Кортеж"],
-        "answer": "Кортеж"
-        },
-        {
-        "question": "Кто создал язык Python?",
-        "options": ["Билл Гейтс", "Гвидо ван Россум", "Линус Торвальдс", "Деннис Ритчи"],
-        "answer": "Гвидо ван Россум"
-        },
-        {
-        "question": "Какой язык программирования используется для стилей веб-страниц?",
-        "options": ["HTML", "CSS", "JavaScript", "PHP"],
-        "answer": "CSS"
-        },
-        {
-        "question": "Что означает аббревиатура 'HTML'?",
-        "options": ["HyperText Markup Language",
-        "HighText Machine Language",
-        "HyperText Machine Language",
-        "HighText Markup Language"],
-        "answer": "HyperText Markup Language"
-        },
-        {
-        "question": "Какой язык программирования разработала компания Microsoft?",
-        "options": ["Java", "C#", "Python", "Ruby"],
-        "answer": "C#"
-        },
-        {
-        "question": "Какой метод Python используется для добавления элемента в список?",
-        "options": [".add()", ".append()", ".insert()", ".push()"],
-        "answer": ".append()"
-        },
-        {
-        "question": "Что делает метод .strip() в Python?",
-        "options": ["Разделяет строку", "Удаляет пробелы по краям", "Переводит в верхний регистр", "Заменяет подстроку"],
-        "answer": "Удаляет пробелы по краям"
-        },
-        {
-        "question": "Какой оператор используется для возведения в степень в Python?",
-        "options": ["^", "", "*", "^^"],
-        "answer": "**"
-        },
-        {
-        "question": "Что выведет print(type(3.14)) в Python?",
-        "options": ["<class 'int'>", "<class 'float'>", "<class 'decimal'>", "<class 'number'>"],
-        "answer": "<class 'float'>"
-        },
-        {
-        "question": "Как называется оператор ... if ... else ... в Python?",
-        "options": ["Условный оператор", "Тернарный оператор", "Логический оператор", "Оператор выбора"],
-        "answer": "Тернарный оператор"
-        },
-        {
-        "question": "Какой язык используется для создания интерактивности на веб-страницах?",
-        "options": ["HTML", "CSS", "JavaScript", "PHP"],
-        "answer": "JavaScript"
-        },
-        {
-        "question": "Какой язык программирования разработал Брендан Эйх?",
-        "options": ["Python", "Java", "JavaScript", "Ruby"],
-        "answer": "JavaScript"
-        },
-        {
-        "question": "Что означает аббревиатура 'SQL'?",
-        "options": ["Structured Query Language",
-        "Simple Query Language",
-        "Standard Query Language",
-        "System Query Language"],
-        "answer": "Structured Query Language"
-        },
-        {
-        "question": "Какой язык программирования используется для разработки приложений под Android?",
-        "options": ["Swift", "Kotlin", "C#", "Ruby"],
-        "answer": "Kotlin"
-        },
-        {
-        "question": "Какой язык программирования разработала Apple?",
-        "options": ["Kotlin", "Swift", "Dart", "Go"],
-        "answer": "Swift"
-        }
-        ]
-    }
-
-    def select_category():
-        print("\nДоступные категории вопросов:")
-        categories = list(questions.keys())
-        for i, category in enumerate(categories, 1):
-           print(f"{i}. {category} ({len(questions[category])} вопросов)")
-        while True:
-                try:    
-                    choice = int(input("\nВыберите номер категории: "))
-                    if 1 <= choice <= len(categories):
-                        return categories[choice-1]
-                    print(f"Пожалуйста, введите число от 1 до {len(categories)}")
-                except ValueError:
-                    print("Пожалуйста, введите число!")
-
-    def run_quiz():
-        print("\033[1;32m" + '                🚀 Викторина 🚀' + "\033[0m")
-        
-        # Выбор категории
-        category = select_category()
-        category_questions = questions[category].copy()
-        random.shuffle(category_questions)
-        
-        print("\033[1;32m" + f'Ответьте на {len(category_questions)} вопросов по категории "{category}"' + "\033[0m")
-        print("\033[1;32m" + 'У вас 2 минуты' + "\033[0m")
-        print('\033[1m'+ '\n')
-        
-        score = 0
-        
-        for i, q in enumerate(category_questions, 1):
-            options = q["options"].copy()
-            correct_answer = q["answer"]
-            random.shuffle(options)
-            
-            correct_index = options.index(correct_answer) + 1
-            
-            print(f'\nВопрос №{i}. {q["question"]}')
-            for idx, option in enumerate(options, 1):
-                print(f'{idx}. {option}')
-            
-            while True:
-                inp = input('Введите номер вашего ответа (1-4): ')
-                if inp.isdigit() and 1 <= int(inp) <= 4:
-                    break
-                print("Ошибка! Пожалуйста, введите число от 1 до 4.")
-            
-            if options[int(inp)-1] == correct_answer:
-                print("✅ Правильно! +1 балл")
-                score += 1
-            else:
-                print(f"❌ Неверно! Правильный ответ: {correct_index}. {correct_answer}")
-            
-            time.sleep(1)
-        print('\n' + '='*40 + '\n' + f'Ваш результат {score} из {len(category_questions)}\n' + '='*40)
-        if score == len(category_questions):
-            print("Идеально! Вы настоящий эрудит! 🎯")
-        elif score >= len(category_questions) * 0.7:
-            print("Отличный результат! 👍")
-        elif score >= len(category_questions) * 0.5:
-            print("Хороший результат! 😊")
-        else:
-            print("Попробуйте еще раз! 💪")
-        print('='*40)
-        while True:
-            p = input('Хотите сыграть ещё раз? (да/нет): ').lower()
-            if p in ('да', 'нет'):
-                break
-            print('Пожалуйста, введите "да" или "нет"')
-        while True:
-            if p == 'да':
-                quiz()
-            else:
-                return
-    # Основной цикл программы
-    while True:
-        if not run_quiz():
-            break
-
-def game_visel():
-    hangman_stages = [
-        """
-        +---+
-        |   |
-        |
-        |
-        |
-        |
-        ======
-        """,
-        """
-        +---+
-        |   |
-        |   O
-        |
-        |
-        |
-        ======
-        """,
-        """
-        +---+
-        |   |
-        |   O
-        |   |
-        |
-        |
-        ======
-        """,
-        """
-        +---+
-        |   |
-        |   O
-        |  /|
-        |
-        |
-        ======
-        """,
-        """
-        +---+
-        |   |
-        |   O
-        |  /|\
-        |
-        |
-        ======
-        """,
-        """
-        +---+
-        |   |
-        |   O
-        |  /|\
-        |  / \
-        |
-        ======
-        """
-    ]
-
-        # Список слов для угадывания
-    words = (
-            'солнце',
-            'мармелад',
-            'ледокол',
-            'аттракцион',
-            'дрессировка',
-            'ошейник',
-            'карамель',
-            'водолаз',
-            'защита',
-            'батарея',
-            'решётка',
-            'квартира',
-            'дельфин',
-            'туча',
-            'вход',
-            'пешеход',
-            'перекрёсток',
-            'башня',
-            'стрелка',
-            'градусник'
-    )
-        
-    lives = 6
-    secret_word = random.choice(words)
-    len_s = len(secret_word)
-    s = '_' * len_s
-        
-    print('Здравствуйте! Это игра "Виселица", где вам нужно угадать слово, называя буквы.')
-    print(f'Загаданное слово: {s}')
-    print('У вас 6 попыток')
-    while lives > 0:
-            put = input('Напишите строчную букву: ').lower()
-            
-            if len(put) != 1 or not put.isalpha():
-                print('Пожалуйста, введите одну строчную букву!')
-                continue
-                
-            for i in range(len_s):
-                if secret_word[i] == put:
-                    s = s[:i] + put + s[i+1:]
-            
-            if put not in secret_word:
-                lives -= 1
-                print(f'Такой буквы нет в слове.')
-            
-            print(f'Текущее слово: {s}\n')
-            
-            if s == secret_word:
-                print(f'Поздравляем! Вы угадали слово: {secret_word}!')
-                print('Хотите сыграть ещё раз? (Да/Нет)')
-                ans = input('Напишите Да или Нет: ')
-                if ans.lower() == 'да':
-                    game_visel()
-                else:
-                    break
-            else:
-                if lives == 5:
-                    print(hangman_stages[0])
-                elif lives == 4:
-                    print(hangman_stages[1])
-                elif lives == 3:
-                    print(hangman_stages[2])
-                elif lives == 2:
-                    print(hangman_stages[3])
-                elif lives == 1:
-                    print(hangman_stages[4])
-                elif lives == 0:
-                    print(hangman_stages[5])
-                
-                print(f'Осталось попыток: {lives}')
-            if lives <= 0:
-                print(f'Игра окончена! Загаданное слово было: {secret_word}')
-                print('Хотите сыграть ещё раз? (Да/Нет)')
-                ans = input('Напишите Да или Нет: ')
-                if ans.lower() == 'да':
-                    game_visel()
-                elif ans.lower() == 'нет':
-                    return
-                else:
-                    print('Пожалуйста, введите "да" или "нет".')
-
-def rand_game():
-    cc = random.randint(1, 100)
-    print('\033[1m' + 'Здравствуйте! Это игра "Угадай число".')
-    print('Я загадываю случайное число от 1 до 100. Вы должны угадать число.')
-    print('Я буду подсказывать "больше" или "меньше".')
-
-    while True: 
-            try:
-                put = int(input('Введите число от 1 до 100: '))
-                if put < 1 or put > 100:  
-                    print("Число должно быть от 1 до 100!")
-                    continue
-            except ValueError:
-                print('Пожалуйста, введите число!')
-                continue  
-
-            if put < cc:
-                print("Загаданное число больше.")
-            elif put > cc:
-                print("Загаданное число меньше.")
-            else:
-                print("Поздравляю, вы угадали число!")
-                break  
-                                                        
-    while True:  
-            k = input('Хотите сыграть ещё раз? (да/нет): ').lower()
-            if k == 'да':
-                print('\n'*3)
-                rand_game()  
-            elif k == 'нет':
-                return 
-            else:
-                print('Пожалуйста, введите "да" или "нет".')
-
-def knb():
-    sp = ['камень','ножницы','бумага']
-    ai = random.choice(sp)
-    print('\033[1m'+'Здраствуйте! Это игра камень,ножницы,бумага. ')
-    print('Как играть: к = камень, н = ножницы, б = бумага')
-    try:
-        while True:
-            i = str(input('Введите к/н/б:')).lower().strip()
-            if i not in 'кнб':
-              print('Пожалуйста введите к, н или б')
-              continue
-            elif len(i) != 1:
-                print('Пожалуйста введите к, н или б')
-                continue
-            elif i == '':
-               print('Пожалуйста введите к, н или б')
-               continue
-            else:
-                break
-    except ValueError:
-        print('Пожалуйста введите к, н или б')
-        
-    if ai == 'камень':
-            ai = 'к'
-    elif ai == 'ножницы':
-            ai = 'н'
-    elif ai == 'бумага':
-            ai = 'б'
-
-    if i == ai :
-            print('Ничья!')
-    elif i == 'к' and ai == 'н':
-            print('Вы выиграли!')
-    elif i == 'н' and ai == 'б':
-            print('Вы выиграли!')
-    elif i == 'б' and ai == 'к':
-            print('Вы выиграли!')
-    else:
-            print('Вы проиграли!')
-
-    print('Хотите сыграть ещё раз? (да/нет)')
-    while True:
-            ans = input('Напишите Да или Нет: ')
-            if ans.lower() == 'да':
-                print('\n'+'НОВАЯ ИГРА'+'\n')
-                knb()
-            elif ans.lower() == 'нет':
-                return
-            else:
-                print('Пожалуйста, введите "да" или "нет".')
-
-def tictactoe():
-    ALL_SPACES = ('1', '2', '3', '4', '5', '6', '7', '8', '9')
-    X, O, BLANK = 'X', 'O', ' '
-
-    class TicTacToeBoard:
-        def __init__(self):
-            """Create a new, blank tic-tac-toe board."""
-            self._spaces = {}
-            for space in ALL_SPACES:
-                self._spaces[space] = BLANK
-
-        def drawBoard(self):
-            """Display a text-representation of the board."""
-            print(f'''
-    {self._spaces['1']}|{self._spaces['2']}|{self._spaces['3']} 1 2 3
-    -+-+-
-    {self._spaces['4']}|{self._spaces['5']}|{self._spaces['6']} 4 5 6
-    -+-+-
-    {self._spaces['7']}|{self._spaces['8']}|{self._spaces['9']} 7 8 9\n''')
-
-        def isWinner(self, mark):
-            """Return True if mark is a winner on this TicTacToeBoard."""
-            bo, m = self._spaces, mark  
-            return ((bo['1'] == m and bo['2'] == m and bo['3'] == m) or
-                    (bo['4'] == m and bo['5'] == m and bo['6'] == m) or
-                    (bo['7'] == m and bo['8'] == m and bo['9'] == m) or
-                    (bo['1'] == m and bo['4'] == m and bo['7'] == m) or
-                    (bo['2'] == m and bo['5'] == m and bo['8'] == m) or
-                    (bo['3'] == m and bo['6'] == m and bo['9'] == m) or
-                    (bo['3'] == m and bo['5'] == m and bo['7'] == m) or
-                    (bo['1'] == m and bo['5'] == m and bo['9'] == m))
-
-        def getPlayerMove(self, player):
-            """Let the player type in their move."""
-            space = None
-            while space not in ALL_SPACES or not self._spaces[space] == BLANK:
-                print(f'Как ходит {player}? (1-9)\n')
-                space = input().upper()
-            return space
-
-        def isBoardFull(self):
-            """Return True if every space on the board has been taken."""
-            for space in ALL_SPACES:
-                if self._spaces[space] == BLANK:
-                    return False
-            return True
-
-        def setSpace(self, space, mark):
-            """Sets the space on the board to mark."""
-            self._spaces[space] = mark
-
-    def main():
-        """Runs a game of Tic-Tac-Toe."""
-        print('Добро пожаловать в крестики-нолики!')
-        gameBoard = TicTacToeBoard()
-        turn, nextTurn = X, O
-
-        while True:
-            gameBoard.drawBoard()
-            move = gameBoard.getPlayerMove(turn)
-            gameBoard.setSpace(move, turn)
-
-            if gameBoard.isWinner(turn):
-                gameBoard.drawBoard()
-                print(turn + ' выграл игру!\n')
-                break
-            elif gameBoard.isBoardFull():
-                gameBoard.drawBoard()
-                print('Игра заканчивается вничью!')
-                break
-
-            turn, nextTurn = nextTurn, turn
-    main()
 
 jokes = [
 # Программистские
@@ -1239,6 +353,14 @@ def handle_command(text):
             else:
                 re('Что именно вам найти?')
 
+        elif 'открой roblox' in text:
+            os.startfile(r'C:\Users\Yusuf\AppData\Local\Roblox\Versions\version-fe20d41d8fec4770\RobloxPlayerBeta')
+            re('Открываю')
+
+        elif 'открой minecraft' in text:
+            os.startfile(r'C:\Users\Yusuf\OneDrive\Рабочий стол\MINECRAFT')
+            re('Открываю')
+            
         elif 'переведи на' in text:
                 if 'английский' in text:
                     m = text.replace("переведи на английский", "").strip()
@@ -1250,7 +372,7 @@ def handle_command(text):
                                 time.sleep(0.0000001)
                                 keyboard.send('Tab')
                             re(f'{m} на английском')
-                            time.sleep(4)
+                            time.sleep(2)
                             keyboard.send('alt+ctrl+V')
                             break
                         except:
@@ -1282,23 +404,27 @@ def handle_command(text):
         
         elif 'камень ножницы бумага' in text:
             re('Запускаю игру камень ножницы бумага\n')
-            knb()
+            start('stone_knots_paper.py')
 
         elif 'виселиц' in text:
             re('Запускаю игру виселица\n')
-            game_visel()
+            start('hangman.py')
 
         elif 'викторин' in text:
             re('Запускаю игру викторина\n')
-            quiz()
+            start('quiz.py')
+
+        elif 'квест' in text:
+            re('Запускаю игру викторина\n')
+            start('quest.py')
 
         elif 'крестики-нолики' in text:
             re('Запускаю игру крестики нолики\n')
-            tictactoe()
+            start('tictactoe.py')
 
         elif 'угадай число' in text:
             re('Запускаю игру угадай число\n')
-            rand_game()
+            start('rand_game.py')
 
         elif any(word in text for word in ['дипси', 'deep', 'deepseek']):
             re('Открываю нейросеть дипсик')
@@ -1333,6 +459,9 @@ def handle_command(text):
             webbrowser.open_new_tab('https://yandex.ru/pogoda/')
             re('Открываю прогноз погоды')
 
+        elif 'fire kill' in text:
+            start(r'game\FireKill.py')
+            re('Запускаю')
         elif 'открой настройки' in text:
             keyboard.send('Win + I')
             re('Есть')
@@ -1341,14 +470,14 @@ def handle_command(text):
 
         elif 'включи свет' in text:
             webbrowser.open('https://alice.yandex.ru?')
-            time.sleep(4)
+            time.sleep(2)
             keyboard.write('Включи светильник')
             keyboard.send('Enter')
             re('Ок')
         
         elif 'выключи свет' in text:
             webbrowser.open('https://alice.yandex.ru?')
-            time.sleep(4)
+            time.sleep(2)
             keyboard.write('Выключи свет')
             keyboard.send('Enter')
             re('Ок')
@@ -1359,11 +488,11 @@ def handle_command(text):
             w = w.replace("минут", "").strip()
             w = w.replace("ы", "").strip()
             if w:
-                if open_timer_file():
-                    time.sleep(2)
-                    keyboard.write(w)
-                    keyboard.send('Enter') 
-                    re('Таймер успешно запущен') 
+                start('timer.py')
+                time.sleep(3)
+                keyboard.write(w)
+                keyboard.send('Enter') 
+                re('Таймер успешно запущен') 
             else:
                 re('Уточните на сколько поставить таймер')
 
@@ -1497,9 +626,11 @@ def main():
     print("Что бы начать игру скажите Кеше название игры")
 
     print("- Игры - Открывает яндекс игры")
+    print("- FIreKill (Поиграйте очень интересно =) - ")
     print("- Виселица - ")
     print("- Крестики-Нолики - ")
     print("- Угадай число - ")
+    print("- Квест - ")
     print("- Викторина - ")
     print("- Камень ножницы бумага - ")
     print("- Угадай число - ")
@@ -1510,12 +641,10 @@ def main():
 
     try:
         while True:
-            time.sleep(1)
+            time.sleep(0.1)
     except KeyboardInterrupt:
         re("Выключаюсь")
         os._exit(0)
 
 if __name__ == "__main__":
     main()
-
-
