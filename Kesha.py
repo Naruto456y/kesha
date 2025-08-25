@@ -414,6 +414,12 @@ def handle_command(text):
             re('Запускаю игру викторина\n')
             start('quiz.py')
 
+        elif 'вниз' in text:
+            mouse.wheel(-1)
+
+        elif 'верх' in text:
+            mouse.wheel(1)
+
         elif 'квест' in text:
             re('Запускаю игру квест\n')
             start('quest.py')
