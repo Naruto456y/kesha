@@ -2,7 +2,6 @@ import requests
 import base64
 import uuid
 from urllib.parse import urlencode
-import json
 
 # ВСТАВЬТЕ СЮДА ВАШИ ДАННЫЕ:
 CLIENT_ID = "YOUR_GIGACHAT_CLIENT_ID"      # ← ЗАМЕНИТЕ
@@ -38,9 +37,6 @@ def get_gigachat_token():
             timeout=30
         )
         
-        print(f"Статус ответа: {response.status_code}")
-        print(f"Ответ сервера: {response.text}")
-        
         if response.status_code == 200:
             token_data = response.json()
             return token_data.get("access_token")
@@ -54,7 +50,6 @@ def get_gigachat_token():
 
 def ask_gigachat(question: str):
     """Задаем вопрос GigaChat"""
-    print("Получаем токен...")
     token = get_gigachat_token()
     
     if not token:

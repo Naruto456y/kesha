@@ -1,3 +1,5 @@
+"""Привет, Это голосовой помощник Кеша. Чтобы начать скачайте все необходимые библиотеки и запустите файл."""
+
 from gtts import gTTS
 import speech_recognition as sr
 import pygame
@@ -18,12 +20,16 @@ from urllib.parse import quote
 import gig
 from youtube_search import YoutubeSearch
 import mouse
+from datetime import date, datetime, timedelta  
 
 # Инициализация PyGame для интерфейса
 pygame.init()
 WIDTH, HEIGHT = 1000, 700
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Голосовой помощник Кеша")
+icon = pygame.image.load(__file__.replace('Kesha.py','Kesha_icon.png.jpg')).convert_alpha()
+pygame.display.set_icon(icon)
+
 
 # Цвета
 WHITE = (255, 255, 255)
@@ -54,6 +60,8 @@ class UIState:
         self.commands_page = 0
         self.total_command_pages = 0
         self.animation_counter = 0
+        self.dialog_scroll_offset = 0  # Смещение для прокрутки диалога
+        self.commands_scroll_offset = 0  # Смещение для прокрутки команд
 
 ui_state = UIState()
 
@@ -92,8 +100,8 @@ COMMAND_CATEGORIES = {
         "Закрой окно - Закрыть текущее окно"
     ],
     "🎵 Медиа и управление": [
-        "Музыка - Открыть музыку",
-        "Музыка [название] - Найти музыку",
+        "Моя волна - Включает вашу волну в яндекс  музыке",
+        "Музыка [название] - Найти музыку в яндекс  музыке ",
         "Пауза - Поставить на паузу",
         "Дальше - Следующий трек",
         "Пробел - Нажать пробел",
@@ -109,6 +117,7 @@ COMMAND_CATEGORIES = {
     "🔧 Специальные команды": [
         "Переведи на английский [текст] - Перевод",
         "Переведи на русский [текст] - Перевод",
+        "Нарисуй [что-то] - Нарисовать",
         "Включи свет - Умный дом",
         "Выключи свет - Умный дом",
         "Поставь таймер на [минуты] - Таймер",
@@ -173,7 +182,7 @@ command_queue = queue.Queue()
 
 # Настройки голосового помощника
 class Config:
-    WAKE_WORDS = ['кеша', 'кеш', 'гоша', 'кэш','валера','чебурек']
+    WAKE_WORDS = ['кеша', 'ке', 'гоша', 'кэш','валера','чебурек']
     SENSITIVITY = 0.5
     ENERGY_THRESHOLD = 1000
     PAUSE_THRESHOLD = 2
@@ -215,7 +224,7 @@ class AudioManager:
         try:
             # Добавляем сообщение в интерфейс
             ui_state.messages.append(("Кеша", text))
-            if len(ui_state.messages) > 10:
+            if len(ui_state.messages) > 20:  # Увеличил буфер сообщений
                 ui_state.messages.pop(0)
                 
             filename = os.path.join(TEMP_DIR, f"voice_{int(time.time()*1000)}.mp3")
@@ -286,7 +295,7 @@ class VoiceRecognizer:
                 text = self.recognizer.recognize_google(audio, language='ru-RU').lower()
                 
                 ui_state.messages.append(("Вы", text))
-                if len(ui_state.messages) > 10:
+                if len(ui_state.messages) > 20:  # Увеличил буфер сообщений
                     ui_state.messages.pop(0)
                     
                 ui_state.is_listening = False
@@ -391,7 +400,7 @@ def change_volume(direction):
     return current
 
 def handle_command(text):
-    """Обработка конкретной команды"""
+    """Обработка конкретной команда"""
     if not text:
         return
 
@@ -418,7 +427,28 @@ def handle_command(text):
         elif 'открой minecraft' in text:
             os.startfile(r'C:\Users\Yusuf\OneDrive\Рабочий стол\MINECRAFT')
             re('Открываю')
+        
+        elif 'камер' in text:
+            keyboard.send('win+2')
+            re('Открываю')    
             
+        elif 'селф' in text:
+            keyboard.send('win+2')
+            time.sleep(2)
+            re('Улубнитесь!')
+            time.sleep(1.5)
+            keyboard.send('space')  
+            
+        elif 'сверн' in text:
+            mouse.move(1422, 22)
+            time.sleep(0.1) 
+            mouse.click('left')  
+        
+        elif 'закр' in text:
+            mouse.move(1513, 22)
+            time.sleep(0.1) 
+            mouse.click('left')    
+        
         elif 'переведи на' in text:
                 if 'английский' in text:
                     m = text.replace("переведи на английский", "").strip()
@@ -527,9 +557,21 @@ def handle_command(text):
             start(r'game\FireKill.py')
             re('Запускаю')
             
+        elif 'дз' in text or 'домашн' in text:
+            webbrowser.open('https://school.mos.ru/diary/homeworks/homeworks/')
+            re('Вот что задали')    
+        
+        elif 'расписан' in text:
+            today = date.today()  
+            tomorrow = today + timedelta(days=1)
+            tomorrow = (str(tomorrow)).split('-')
+            tomorrow = tomorrow[2] + '-' + tomorrow[1] + '-' + tomorrow[0]
+            webbrowser.open(f'https://school.mos.ru/diary/schedules/day/?date={tomorrow}')
+            re('Вот расписание на завтра')   
+        
         elif 'телефон' in text:
             keyboard.send('Win + 3')
-            time.sleep(1)
+            time.sleep(3)
             mouse.move(299, 180)
             time.sleep(0.1)
             mouse.click('left')
@@ -542,6 +584,15 @@ def handle_command(text):
         elif 'отстань' in text:
             start(r'game\FireKill.py')
             re('Запускаю')
+            
+        elif 'запис' in text:
+            keyboard.send('Win + 6')
+            time.sleep(5)
+            mouse.move(378, 600)
+            time.sleep(0.1)
+            re('Начинаю запись')
+            time.sleep(1)
+            mouse.click('left')
             
         elif 'открой настройки' in text:
             keyboard.send('Win + I')
@@ -556,13 +607,35 @@ def handle_command(text):
             keyboard.send('Enter')
             re('Ок')
         
+        elif 'нарисуй' in text:
+            t = text.split('нарисуй')[1].strip()
+            if t:
+                webbrowser.open('https://alice.yandex.ru?')
+                time.sleep(2)
+                keyboard.write('нарисуй несколько вариантов ' + t)
+                keyboard.send('Enter')
+                re('Генирирую картинку')
+            else:
+                re('Уточните пожалуйста, что нарисовать?')
+                
+        elif 'включи свет' in text:
+            webbrowser.open('https://alice.yandex.ru?')
+            time.sleep(2)
+            keyboard.write('Включи светильник')
+            keyboard.send('Enter')
+            re('Ок')
+        
         elif 'выключи свет' in text:
             webbrowser.open('https://alice.yandex.ru?')
             time.sleep(2)
-            keyboard.write('Выключи свет')
+            keyboard.write('Выключи светильник')
             keyboard.send('Enter')
             re('Ок')
-
+        
+        elif 'браузер' in text:
+            keyboard.send('Win + 9')
+            re('Ок')
+            
         elif 'поставь таймер на' in text:
             w = text.replace("поставь таймер на", "").strip()
             w = w.replace("минуту", "").strip()
@@ -581,18 +654,27 @@ def handle_command(text):
             q = text.replace("музыка", "").strip()
             if q:
                 AppOpener.open('Yandex',True)
-                webbrowser.open(f'https://rus.hitmotop.com/search?q={q}')
-                time.sleep(1)
-                keyboard.send('Tab')
-                keyboard.send('space')
-                re('Послушайте, что я нашёл')
-                time.sleep(2)
-                mouse.move(252, 794)
+                a = q.split(' ')
+                b = ''
+                for i in a:
+                    if not i == a[-1]:
+                        b = b + i + '+'
+                    else:
+                        b = b + i
+                webbrowser.open(f'https://music.yandex.ru/search?text={b}')
+                time.sleep(3)
+                re('Включаю')
+                mouse.move(272, 262)
+                time.sleep(0.1)
                 mouse.click('left')
-            else:
-                AppOpener.open('Yandex',True)
-                webbrowser.open('https://rus.hitmotop.com')
-                re('Открываю')
+        elif 'волн' in text:
+            AppOpener.open('Yandex',True)
+            webbrowser.open('https://music.yandex.ru/')
+            time.sleep(3)
+            mouse.move(765, 334)
+            time.sleep(0.1)
+            mouse.click('left')
+            re('Включаю вашу волну')
 
         elif 'открой проводник' in text:
             keyboard.send('Win + E')
@@ -610,14 +692,10 @@ def handle_command(text):
             keyboard.send('F')
             re('Есть')
 
-        elif 'время' in text:
+        elif 'время' in text or 'времени' in text:
             current_time = datetime.now().strftime("%H:%M")
             re(f'Сейчас {current_time}')
-
-        elif 'времени' in text:
-            current_time = datetime.now().strftime("%H:%M")
-            re(f'Сейчас {current_time}')    
-
+            
         elif 'состояние' in text or 'батарея' in text:
             battery = psutil.sensors_battery()
             if battery.power_plugged:
@@ -679,6 +757,28 @@ def handle_command(text):
         re('Произошла ошибка при обработке команды')
         print(f"Ошибка: {e}")
 
+def wrap_text(text, font, max_width):
+    """Перенос текста на несколько строк, чтобы не выходил за границы"""
+    words = text.split(' ')
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        # Оцениваем ширину текста
+        test_width = font.size(test_line)[0]
+        if test_width <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(' '.join(current_line))
+            current_line = [word]
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    return lines
+
 def draw_interface():
     """Отрисовка интерфейса"""
     screen.fill(LIGHT_BLUE)
@@ -696,15 +796,15 @@ def draw_interface():
     if ui_state.is_wake_word_detected:
         pygame.draw.circle(screen, GREEN, (WIDTH - 30, 80), 8)
         active_text = font_small.render("Активен!", True, GREEN)
-        screen.blit(active_text, (WIDTH - 80, 72))
+        screen.blit(active_text, (WIDTH - 120, 72))
     
     # Индикатор слушания (только после активации)
     if ui_state.is_listening and ui_state.is_wake_word_detected:
         # Анимированный индикатор
         size = 8 + int(ui_state.animation_counter % 3)
-        pygame.draw.circle(screen, RED, (WIDTH - 80, 80), size)
+        pygame.draw.circle(screen, RED, (WIDTH - 150, 80), size)
         listen_text = font_small.render("Слушаю...", True, RED)
-        screen.blit(listen_text, (WIDTH - 130, 72))
+        screen.blit(listen_text, (WIDTH - 240, 72))
     
     # Последняя команда
     if ui_state.last_command:
@@ -712,13 +812,19 @@ def draw_interface():
         cmd_text = font_small.render(f"Последняя команда: {ui_state.last_command}", True, BLACK)
         screen.blit(cmd_text, (20, 115))
     
-    # Область сообщений
+    # Область сообщений (поднята выше)
     pygame.draw.rect(screen, WHITE, (10, 150, WIDTH-20, 150), border_radius=10)
     msg_title = font_medium.render("Диалог:", True, DARK_BLUE)
     screen.blit(msg_title, (20, 155))
     
+    # Отображение сообщений с прокруткой
     y_pos = 185
-    for sender, message in ui_state.messages[-4:]:
+    visible_messages = ui_state.messages[ui_state.dialog_scroll_offset:]
+    
+    for sender, message in visible_messages:
+        if y_pos > 280:  # Не выходить за границы области
+            break
+            
         if sender == "Вы":
             color = BLUE
             prefix = "👤 "
@@ -726,21 +832,30 @@ def draw_interface():
             color = GREEN
             prefix = "🤖 "
         
-        msg_text = font_small.render(f"{prefix}{message}", True, color)
-        screen.blit(msg_text, (25, y_pos))
-        y_pos += 25
+        # Перенос текста, чтобы не выходил за границы
+        wrapped_lines = wrap_text(f"{prefix}{message}", font_small, WIDTH - 50)
+        
+        for line in wrapped_lines:
+            if y_pos > 280:  # Не выходить за границы области
+                break
+            msg_text = font_small.render(line, True, color)
+            screen.blit(msg_text, (25, y_pos))
+            y_pos += 20
     
-    # Область команд
+    # Область команд (поднята выше)
     pygame.draw.rect(screen, WHITE, (10, 310, WIDTH-20, 300), border_radius=10)
     commands_title = font_medium.render("📋 Доступные команды:", True, DARK_BLUE)
     screen.blit(commands_title, (20, 320))
     
-    # Отображение команд постранично
-    start_idx = ui_state.commands_page * 8
-    end_idx = min(start_idx + 8, len(all_commands))
+    # Отображение команд с прокруткой
+    start_idx = ui_state.commands_scroll_offset
+    end_idx = min(start_idx + 12, len(all_commands))  # Больше команд на экран
     
     y_pos = 355
     for i in range(start_idx, end_idx):
+        if y_pos > 590:  # Не выходить за границы области
+            break
+            
         command = all_commands[i]
         if command in COMMAND_CATEGORIES:
             # Это заголовок категории
@@ -748,32 +863,26 @@ def draw_interface():
             screen.blit(cat_text, (25, y_pos))
             y_pos += 25
         else:
-            # Это команда
-            cmd_text = font_tiny.render(f"• {command}", True, BLACK)
-            screen.blit(cmd_text, (35, y_pos))
-            y_pos += 20
+            # Это команда - переносим текст
+            wrapped_lines = wrap_text(f"• {command}", font_tiny, WIDTH - 50)
+            for line in wrapped_lines:
+                if y_pos > 590:  # Не выходить за границы области
+                    break
+                cmd_text = font_tiny.render(line, True, BLACK)
+                screen.blit(cmd_text, (35, y_pos))
+                y_pos += 18
     
-    # Навигация по страницам команд
-    if ui_state.total_command_pages > 1:
-        page_text = font_small.render(f"Страница {ui_state.commands_page + 1}/{ui_state.total_command_pages}", True, BLACK)
-        screen.blit(page_text, (WIDTH - 160, 320))
-        
-        # Кнопки навигации (исправлены координаты)
-        if ui_state.commands_page > 0:
-            pygame.draw.rect(screen, BLUE, (WIDTH - 200, 315, 30, 25), border_radius=5)
-            prev_text = font_small.render("←", True, WHITE)
-            screen.blit(prev_text, (WIDTH - 190, 315))
-        
-        if ui_state.commands_page < ui_state.total_command_pages - 1:
-            pygame.draw.rect(screen, BLUE, (WIDTH - 50, 315, 30, 25), border_radius=5)
-            next_text = font_small.render("→", True, WHITE)
-            screen.blit(next_text, (WIDTH - 40, 315))
+    # Индикатор прокрутки команд
+    if len(all_commands) > 12:
+        scroll_pos = int((ui_state.commands_scroll_offset / len(all_commands)) * 250)
+        pygame.draw.rect(screen, GRAY, (WIDTH - 25, 355, 10, 250), border_radius=5)
+        pygame.draw.rect(screen, BLUE, (WIDTH - 25, 355 + scroll_pos, 10, 30), border_radius=5)
     
     # Подсказки внизу
     pygame.draw.rect(screen, WHITE, (10, 620, WIDTH-20, 70), border_radius=10)
     tips = [
         "🗣️ Скажите: 'Кеша' для активации, затем команду",
-        "⚡ Используйте кнопки ниже для управления"
+        "⚡ Используйте колесо мыши или стрелки для прокрутки"
     ]
     
     y_pos = 630
@@ -787,15 +896,15 @@ def draw_interface():
     exit_text = font_small.render("Выход", True, WHITE)
     screen.blit(exit_text, (WIDTH - 95, 640))
     
-    # Кнопка следующей страницы команд
+    # Кнопка прокрутки вниз
     pygame.draw.rect(screen, BLUE, (WIDTH - 240, 635, 100, 30), border_radius=5)
-    next_text = font_small.render("След. стр", True, WHITE)
-    screen.blit(next_text, (WIDTH - 235, 640))
+    down_text = font_small.render("Вниз", True, WHITE)
+    screen.blit(down_text, (WIDTH - 220, 640))
     
-    # Кнопка предыдущей страницы
+    # Кнопка прокрутки вверх
     pygame.draw.rect(screen, BLUE, (WIDTH - 360, 635, 100, 30), border_radius=5)
-    prev_text = font_small.render("Пред. стр", True, WHITE)
-    screen.blit(prev_text, (WIDTH - 355, 640))
+    up_text = font_small.render("Вверх", True, WHITE)
+    screen.blit(up_text, (WIDTH - 345, 640))
     
     pygame.display.flip()
     ui_state.animation_counter += 0.5
@@ -816,6 +925,7 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = event.pos
                 
@@ -824,24 +934,37 @@ def main():
                     re("Выключаюсь")
                     running = False
                 
-                # Кнопка следующей страницы команд (исправлены координаты)
+                # Кнопка прокрутки вниз
                 elif WIDTH - 240 <= x <= WIDTH - 140 and 635 <= y <= 665:
-                    if ui_state.commands_page < ui_state.total_command_pages - 1:
-                        ui_state.commands_page += 1
+                    if ui_state.commands_scroll_offset < len(all_commands) - 12:
+                        ui_state.commands_scroll_offset += 1
                 
-                # Кнопка предыдущей страницы команд (исправлены координаты)
+                # Кнопка прокрутки вверх
                 elif WIDTH - 360 <= x <= WIDTH - 260 and 635 <= y <= 665:
-                    if ui_state.commands_page > 0:
-                        ui_state.commands_page -= 1
-                
-                # Кнопки навигации в области команд (исправлены координаты)
-                elif WIDTH - 200 <= x <= WIDTH - 170 and 315 <= y <= 340:
-                    if ui_state.commands_page > 0:
-                        ui_state.commands_page -= 1
-                
-                elif WIDTH - 50 <= x <= WIDTH - 20 and 315 <= y <= 340:
-                    if ui_state.commands_page < ui_state.total_command_pages - 1:
-                        ui_state.commands_page += 1
+                    if ui_state.commands_scroll_offset > 0:
+                        ui_state.commands_scroll_offset -= 1
+            
+            # Прокрутка колесом мыши
+            elif event.type == pygame.MOUSEWHEEL:
+                if event.y > 0:  # Прокрутка вверх
+                    if ui_state.commands_scroll_offset > 0:
+                        ui_state.commands_scroll_offset -= 1
+                elif event.y < 0:  # Прокрутка вниз
+                    if ui_state.commands_scroll_offset < len(all_commands) - 12:
+                        ui_state.commands_scroll_offset += 1
+            
+            # Прокрутка стрелками клавиатуры
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    if ui_state.commands_scroll_offset > 0:
+                        ui_state.commands_scroll_offset -= 1
+                elif event.key == pygame.K_DOWN:
+                    if ui_state.commands_scroll_offset < len(all_commands) - 12:
+                        ui_state.commands_scroll_offset += 1
+                elif event.key == pygame.K_PAGEUP:
+                    ui_state.commands_scroll_offset = max(0, ui_state.commands_scroll_offset - 5)
+                elif event.key == pygame.K_PAGEDOWN:
+                    ui_state.commands_scroll_offset = min(len(all_commands) - 12, ui_state.commands_scroll_offset + 5)
         
         draw_interface()
         clock.tick(30)
