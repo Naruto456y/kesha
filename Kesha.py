@@ -27,7 +27,7 @@ pygame.init()
 WIDTH, HEIGHT = 1000, 700
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Голосовой помощник Кеша")
-icon = pygame.image.load(__file__.replace('Kesha.py','Kesha_icon.png.jpg')).convert_alpha()
+icon = pygame.image.load(__file__.replace('Kesha.py','Kesha_icoc.jpg')).convert_alpha()
 pygame.display.set_icon(icon)
 
 
@@ -66,7 +66,7 @@ class UIState:
 ui_state = UIState()
 
 # Полный список команд
-COMMAND_CATEGORIES = {
+COMMAND_CATEGORIES = COMMAND_CATEGORIES = {
     "🎯 Основные команды": [
         "Привет - Поприветствовать",
         "Как дела - Узнать состояние",
@@ -399,6 +399,7 @@ def change_volume(direction):
         return new_vol
     return current
 
+
 def handle_command(text):
     """Обработка конкретной команда"""
     if not text:
@@ -553,13 +554,17 @@ def handle_command(text):
             a = get_text_with_url('https://rp5.ru/Погода_в_Сосенках,_Москва','t_0')
             re(a)
             
-        elif 'fire kill' in text:
+        elif 'fire kill' in text or 'факел' in text:
             start(r'game\FireKill.py')
             re('Запускаю')
             
         elif 'дз' in text or 'домашн' in text:
             webbrowser.open('https://school.mos.ru/diary/homeworks/homeworks/')
             re('Вот что задали')    
+        
+        elif 'оценк' in text:
+            webbrowser.open('https://school.mos.ru/diary/marks/current-marks')
+            re('Вот ваши оценки на этой неделе')  
         
         elif 'расписан' in text:
             today = date.today()  
@@ -581,9 +586,6 @@ def handle_command(text):
             mouse.click('left')
             re('Уже звоню ищите')    
             
-        elif 'отстань' in text:
-            start(r'game\FireKill.py')
-            re('Запускаю')
             
         elif 'запис' in text:
             keyboard.send('Win + 6')
@@ -650,7 +652,9 @@ def handle_command(text):
             else:
                 re('Уточните на сколько поставить таймер')
 
-        elif 'музыка' in text:
+        # Музыка
+        
+        elif 'музык' in text:
             q = text.replace("музыка", "").strip()
             if q:
                 AppOpener.open('Yandex',True)
@@ -670,40 +674,59 @@ def handle_command(text):
         elif 'волн' in text:
             AppOpener.open('Yandex',True)
             webbrowser.open('https://music.yandex.ru/')
-            time.sleep(3)
-            mouse.move(765, 334)
-            time.sleep(0.1)
+            
+            time.sleep(3.5)
+            mouse.move(765, 309)
+            time.sleep(0.5)
             mouse.click('left')
             re('Включаю вашу волну')
-
+        elif text and any(('дальше' in text, 'след' in text, 'продол' in text)):
+            time.sleep(0.5)
+            keyboard.send('N')  
+        elif text and any(('стоп' in text, 'пауз' in text, 'заткн' in text)):
+            time.sleep(0.5)
+            keyboard.send('K')  
+        elif text and any(('пред' in text, 'прошл' in text, 'назад' in text)):
+            time.sleep(0.5)
+            keyboard.send('P')
+        elif [a for a in text.split(' ') if a == 'лайк'] or 'нравит' in text:
+            time.sleep(0.5)
+            keyboard.send('F')
+            time.sleep(0.5)
+            re('Ок, добавил в избранное!')
+        elif text and any(('дизлайк' in text, 'не нравит' in text)):
+            time.sleep(0.5)
+            keyboard.send('D')
+            re('Ок, больше небуду включать такое')  
+            
         elif 'открой проводник' in text:
             keyboard.send('Win + E')
-            re('Есть')
-
-        elif 'дальше' in text:
-            keyboard.send('shift + N')
-            re('Есть')
-
-        elif 'пробел' in text:
-            keyboard.send('space')
-            re('Есть')
-
-        elif 'полный экран' in text:
-            keyboard.send('F')
             re('Есть')
 
         elif 'время' in text or 'времени' in text:
             current_time = datetime.now().strftime("%H:%M")
             re(f'Сейчас {current_time}')
             
-        elif 'состояние' in text or 'батарея' in text:
+        elif 'состояние' in text or 'батар' in text:
             battery = psutil.sensors_battery()
-            if battery.power_plugged:
-                status = "заряжается"
-            else:
-                status = "работает от батареи"
-            re(f'Батарея {status}, уровень заряда {battery.percent}%')
 
+            # Проверяем, заряжается ли устройство
+            if battery.power_plugged:
+                # Если заряжается — сообщаем только уровень и статус
+                re(f'Батарея заряжается. Уровень заряда {battery.percent}%')
+            else:
+                # Если не заряжается — добавляем прогноз времени работы
+                if battery.secsleft is not None and battery.secsleft != -1:
+                    # Конвертируем секунды в часы и минуты
+                    hours, remainder = divmod(battery.secsleft, 3600)
+                    minutes = remainder // 60
+                    remaining_time = f"{hours} часов {minutes} минут"
+                else:
+                    remaining_time = "неизвестно"
+
+                # Формируем сообщение
+                re(f'Батарея не зарежается.Уровень заряда {battery.percent}%, осталось примерно {remaining_time}')
+    
         elif any(word in text for word in ['громче', 'увеличь громкость']):
             new_vol = change_volume('up')
             re(f'Громкость увеличена до {int(new_vol * 100)}%')
@@ -711,7 +734,7 @@ def handle_command(text):
         elif any(word in text for word in ['тише', 'уменьши громкость']):
             new_vol = change_volume('down')
             re(f'Громкость уменьшена до {int(new_vol * 100)}%')
-
+            
         elif 'громкость' in text:
             try:
                 vol_level = int(''.join(filter(str.isdigit, text)))
@@ -743,7 +766,7 @@ def handle_command(text):
             else:
                 re('Какое приложение закрыть?')
 
-        elif 'выключи компьютер' in text:
+        elif 'комп' in text and 'выкл' in text:
             re('Выключаю компьютер через 10 секунд')
             os.system("shutdown /s /t 10")
 
