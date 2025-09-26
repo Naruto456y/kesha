@@ -5,7 +5,6 @@ import speech_recognition as sr
 import pygame
 import os
 import time
-import random
 import keyboard
 import webbrowser
 from datetime import datetime
@@ -21,13 +20,14 @@ import gig
 from youtube_search import YoutubeSearch
 import mouse
 from datetime import date, datetime, timedelta  
+import re
 
 # Инициализация PyGame для интерфейса
 pygame.init()
 WIDTH, HEIGHT = 1000, 700
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Голосовой помощник Кеша")
-icon = pygame.image.load(__file__.replace('Kesha.py','Kesha_icoc.jpg')).convert_alpha()
+icon = pygame.image.load(__file__.replace('Kesha.py','Kesha_icoc.jpeg')).convert_alpha()
 pygame.display.set_icon(icon)
 
 
@@ -89,7 +89,6 @@ COMMAND_CATEGORIES = COMMAND_CATEGORIES = {
         "Квест - Запустить игру",
         "Крестики-нолики - Запустить игру",
         "Угадай число - Запустить игру",
-        "FireKill - Запустить игру"
     ],
     "💻 Система и приложения": [
         "Открой [приложение] - Открыть программу",
@@ -175,6 +174,37 @@ def search_and_open_youtube(query):
     webbrowser.open(video_url)
     print(f"Открываю видео: {results[0]['title']}")
 
+def math_calculator(sentence):
+    """
+    Простая функция, которая находит математический пример в предложении и решает его
+    """
+    # Убираем пробелы и ищем математическое выражение
+    clean_text = sentence.replace(' ', '')
+    
+    # Ищем последовательности с цифрами, операторами, скобками и точками
+    match = re.search(r'([\d\(\)+\-*/.^]+)', clean_text)
+    
+    if not match:
+        return "Математический пример не найден"
+    
+    expression = match.group(1)
+    
+    try:
+        # Заменяем ^ на ** для степени
+        expression_eval = expression.replace('^', '**')
+        result = eval(expression_eval)
+        
+        # Преобразуем float в int если результат целый
+        if isinstance(result, float) and result.is_integer():
+            result = int(result)
+            
+        return result
+        
+    except ZeroDivisionError:
+        return f"Ошибка: деление на ноль в примере {expression}"
+    except:
+        return f"Не удалось решить пример: {expression}"
+
 # Инициализация аудио системы
 pygame.mixer.init()
 TEMP_DIR = tempfile.gettempdir()
@@ -182,13 +212,13 @@ command_queue = queue.Queue()
 
 # Настройки голосового помощника
 class Config:
-    WAKE_WORDS = ['кеша', 'ке', 'гоша', 'кэш','валера','чебурек']
+    WAKE_WORDS = ['кеша', 'кеш', 'гоша', 'кэш', 'валера', 'чебурек', 'кешь', 'кешу']
     SENSITIVITY = 0.5
     ENERGY_THRESHOLD = 1000
     PAUSE_THRESHOLD = 2
     DYNAMIC_ENERGY = True
-    TIMEOUT = 1.5
-    PHRASE_LIMIT = 3
+    TIMEOUT = 10  # Увеличиваем таймаут прослушивания
+    PHRASE_LIMIT = 7  # Увеличиваем лимит фразы
 
 # Инициализация управления громкостью
 try:
@@ -315,16 +345,16 @@ class VoiceRecognizer:
                 ui_state.status_color = RED
                 return ""
 
-def re(text):
+def rec(text):
     """Быстрый вывод и озвучивание текста"""
     print(text)
     audio_manager.say(text)
 
 def listen_for_wake_word():
-    """Прослушивание ключевого слова для активации"""
+    """Постоянное прослушивание с активацией по ключевому слову в любой фразе"""
     recognizer = VoiceRecognizer()
-    re("Готов к работе, жду ключевое слово...")
-    print("кеша, кеш, гоша, кэш, валера, чебурек")
+    rec("Готов к работе, жду команды...")
+    print("Просто говорите команды, начиная с 'Кеша' или других ключевых слов")
     
     while True:
         try:
@@ -332,14 +362,25 @@ def listen_for_wake_word():
             while audio_manager.is_speaking:
                 time.sleep(0.1)
                 
-            text = recognizer.listen(timeout=Config.TIMEOUT)
-            if any(word in text for word in Config.WAKE_WORDS):
-                ui_state.is_wake_word_detected = True
-                ui_state.status = "Активирован! Говорите команду..."
-                ui_state.status_color = GREEN
-                command_queue.put("wake_word_detected")
-                time.sleep(2)
-                ui_state.is_wake_word_detected = False
+            # Слушаем постоянно с небольшим таймаутом
+            text = recognizer.listen(timeout=10)  # Увеличиваем таймаут до 10 секунд
+            
+            if text:
+                # Проверяем наличие ключевых слов в любом месте фразы
+                if any(word in text.lower() for word in Config.WAKE_WORDS):
+                    ui_state.is_wake_word_detected = True
+                    ui_state.status = "Команда распознана!"
+                    ui_state.status_color = GREEN
+                    
+                    # Убираем ключевое слово из команды для чистоты
+                    clean_command = text
+                    for word in Config.WAKE_WORDS:
+                        clean_command = clean_command.lower().replace(word, '').strip()
+                    
+                    command_queue.put(("voice_command", clean_command))
+                    time.sleep(0.1)
+                    ui_state.is_wake_word_detected = False
+                    
         except Exception as e:
             print(f"Ошибка в listen_for_wake_word: {e}")
             time.sleep(0.1)
@@ -347,24 +388,24 @@ def listen_for_wake_word():
 def recognize_command():
     """Распознавание команды после активации"""
     recognizer = VoiceRecognizer()
-    re("Слушаю...")
+    rec("Слушаю...")
     return recognizer.listen()
 
 def process_commands():
     """Обработка команд из очереди"""
     while True:
-        command = command_queue.get()
-        if command == "wake_word_detected":
-            command_text = recognize_command()
-            if command_text:
-                ui_state.last_command = command_text
+        command_type, command_data = command_queue.get()
+        
+        if command_type == "voice_command":
+            if command_data:
+                ui_state.last_command = command_data
                 threading.Thread(
                     target=handle_command,
-                    args=(command_text,),
+                    args=(command_data,),
                     daemon=True
                 ).start()
             else:
-                re("Я вас не расслышал, повторите пожалуйста")
+                rec("Я вас не расслышал, повторите пожалуйста")
 
 def set_system_volume(level):
     """Установка громкости системы"""
@@ -406,10 +447,12 @@ def handle_command(text):
         return
 
     print(f"Распознанная команда: {text}")
+    
     text = text.lower().strip()
+    text = text.replace("o'кей", '').strip().lower()
     try:
-        if any(word in text for word in ['пока', 'выход', 'стоп']):
-            re('До свидания!')
+        if any(word in text for word in ['пока', 'выход', 'стоп', 'выключись', 'вырубись']):
+            rec('До свидания!')
             time.sleep(2)
             os._exit(0)
 
@@ -417,28 +460,35 @@ def handle_command(text):
             quertty = text.replace("найди в ютуби", "").strip()
             if quertty:
                 search_and_open_youtube(quertty)
-                re('Вот что я нашёл')
+                rec('Вот что я нашёл')
             else:
-                re('Что именно вам найти?')
+                rec('Что именно вам найти?')
 
         elif 'открой roblox' in text:
-            os.startfile(r'C:\Users\Yusuf\AppData\Local\Roblox\Versions\version-fe20d41d8fec4770\RobloxPlayerBeta')
-            re('Открываю')
+            a = __file__.split('\\')
+            b = a[0] + '\\' + a[1] + '\\' + a[2] + '\\OneDrive\Рабочий стол\Roblox Player.lnk'
+            os.startfile(b)
+            rec('Открываю')
 
         elif 'открой minecraft' in text:
-            os.startfile(r'C:\Users\Yusuf\OneDrive\Рабочий стол\MINECRAFT')
-            re('Открываю')
+            a = __file__.split('\\')
+            b = a[0] + '\\' + a[1] + '\\' + a[2] + '\\OneDrive\Рабочий стол\МАЕНКРАФТ.exe'
+            os.startfile(b)
+            rec('Открываю')
         
         elif 'камер' in text:
             keyboard.send('win+2')
-            re('Открываю')    
+            rec('Открываю')    
             
         elif 'селф' in text:
             keyboard.send('win+2')
             time.sleep(2)
-            re('Улубнитесь!')
+            rec('Улубнитесь!')
             time.sleep(1.5)
             keyboard.send('space')  
+            
+        elif 'тихо' in text:
+            pass
             
         elif 'сверн' in text:
             mouse.move(1422, 22)
@@ -460,7 +510,7 @@ def handle_command(text):
                             for i in range(13):
                                 time.sleep(0.0000001)
                                 keyboard.send('Tab')
-                            re(f'{m} на английском')
+                            rec(f'{m} на английском')
                             time.sleep(2)
                             keyboard.send('alt+ctrl+V')
                             break
@@ -478,7 +528,7 @@ def handle_command(text):
                             for i in range(13):
                                 time.sleep(0.0000001)
                                 keyboard.send('Tab')
-                            re(f'{m} на русском')
+                            rec(f'{m} на русском')
                             time.sleep(2)
                             keyboard.send('alt+ctrl+V')
                             break
@@ -489,18 +539,18 @@ def handle_command(text):
 
         elif 'youtube' in text:
             webbrowser.open('https://www.youtube.com/')
-            re('Открываю YouTube')
+            rec('Открываю YouTube')
         
         elif 'камень ножницы бумага' in text:
-            re('Запускаю игру камень ножницы бумага\n')
+            rec('Запускаю игру камень ножницы бумага\n')
             start('stone_knots_paper.py')
 
         elif 'виселиц' in text:
-            re('Запускаю игру виселица\n')
+            rec('Запускаю игру виселица\n')
             start('hangman.py')
 
         elif 'викторин' in text:
-            re('Запускаю игру викторина\n')
+            rec('Запускаю игру викторина\n')
             start('quiz.py')
 
         elif 'вниз' in text:
@@ -510,61 +560,61 @@ def handle_command(text):
             mouse.wheel(1)
 
         elif 'квест' in text:
-            re('Запускаю игру квест\n')
+            rec('Запускаю игру квест\n')
             start('quest.py')
-
+        
         elif 'крестики-нолики' in text:
-            re('Запускаю игру крестики нолики\n')
+            rec('Запускаю игру крестики нолики\n')
             start('tictactoe.py')
 
         elif 'угадай число' in text:
-            re('Запускаю игру угадай число\n')
+            rec('Запускаю игру угадай число\n')
             start('rand_game.py')
 
         elif any(word in text for word in ['дипси', 'deep', 'deepseek']):
-            re('Открываю нейросеть дипсик')
+            rec('Открываю нейросеть дипсик')
             webbrowser.open('https://chat.deepseek.com/a/chat/s/5e62a9fe-9717-452d-9a82-89c2ca2dd30b')
 
         elif 'переводчик' in text:
-            re('Открываю переводчик')
+            rec('Открываю переводчик')
             webbrowser.open('https://translate.yandex.ru/?111=')
 
         elif 'игры' in text:
-            re('Открываю яндекс игры')
+            rec('Открываю яндекс игры')
             webbrowser.open('https://yandex.ru/games/')
 
         elif 'как дела' in text:
-           re('Всё отлично!Будет ещё лучше если я смогу вам помочь')
+           rec('Всё отлично!Будет ещё лучше если я смогу вам помочь')
 
         elif 'молодец' in text:
-            re('Спасибо!Всегда к вашим услугам')
+            rec('Спасибо!Всегда к вашим услугам')
 
         elif 'привет' in text:
-            re('Привет! Чем могу помочь?')
+            rec('Привет! Чем могу помочь?')
 
         elif 'найди' in text:
             querty = text.replace("найди", "").strip()
             if querty:
                 webbrowser.open_new_tab(f'https://yandex.ru/search/?text={querty}')
-                re(f'Ищу {querty}')
+                rec(f'Ищу {querty}')
             else:
-                re('Что именно вам найти?')
+                rec('Что именно вам найти?')
 
         elif 'погод' in text:
             a = get_text_with_url('https://rp5.ru/Погода_в_Сосенках,_Москва','t_0')
-            re(a)
+            rec(a)
             
-        elif 'fire kill' in text or 'факел' in text:
+        elif 'fi' in text or 'факел' in text:
             start(r'game\FireKill.py')
-            re('Запускаю')
+            rec('Запускаю')
             
         elif 'дз' in text or 'домашн' in text:
             webbrowser.open('https://school.mos.ru/diary/homeworks/homeworks/')
-            re('Вот что задали')    
+            rec('Вот что задали')    
         
         elif 'оценк' in text:
             webbrowser.open('https://school.mos.ru/diary/marks/current-marks')
-            re('Вот ваши оценки на этой неделе')  
+            rec('Вот ваши оценки на этой неделе')  
         
         elif 'расписан' in text:
             today = date.today()  
@@ -572,11 +622,11 @@ def handle_command(text):
             tomorrow = (str(tomorrow)).split('-')
             tomorrow = tomorrow[2] + '-' + tomorrow[1] + '-' + tomorrow[0]
             webbrowser.open(f'https://school.mos.ru/diary/schedules/day/?date={tomorrow}')
-            re('Вот расписание на завтра')   
+            rec('Вот расписание на завтра')   
         
         elif 'телефон' in text:
             keyboard.send('Win + 3')
-            time.sleep(3)
+            time.sleep(4)
             mouse.move(299, 180)
             time.sleep(0.1)
             mouse.click('left')
@@ -584,7 +634,7 @@ def handle_command(text):
             mouse.move(350, 129)
             time.sleep(0.1)
             mouse.click('left')
-            re('Уже звоню ищите')    
+            rec('Уже звоню ищите')    
             
             
         elif 'запис' in text:
@@ -592,22 +642,15 @@ def handle_command(text):
             time.sleep(5)
             mouse.move(378, 600)
             time.sleep(0.1)
-            re('Начинаю запись')
+            rec('Начинаю запись')
             time.sleep(1)
             mouse.click('left')
             
         elif 'открой настройки' in text:
             keyboard.send('Win + I')
-            re('Есть')
+            rec('Есть')
 
         # Для тех у кого умный дом
-
-        elif 'включи свет' in text:
-            webbrowser.open('https://alice.yandex.ru?')
-            time.sleep(2)
-            keyboard.write('Включи светильник')
-            keyboard.send('Enter')
-            re('Ок')
         
         elif 'нарисуй' in text:
             t = text.split('нарисуй')[1].strip()
@@ -616,27 +659,56 @@ def handle_command(text):
                 time.sleep(2)
                 keyboard.write('нарисуй несколько вариантов ' + t)
                 keyboard.send('Enter')
-                re('Генирирую картинку')
+                rec('Генирирую картинку')
             else:
-                re('Уточните пожалуйста, что нарисовать?')
+                rec('Уточните пожалуйста, что нарисовать?')
                 
         elif 'включи свет' in text:
             webbrowser.open('https://alice.yandex.ru?')
             time.sleep(2)
             keyboard.write('Включи светильник')
             keyboard.send('Enter')
-            re('Ок')
+            rec('Ок')
         
         elif 'выключи свет' in text:
             webbrowser.open('https://alice.yandex.ru?')
             time.sleep(2)
             keyboard.write('Выключи светильник')
             keyboard.send('Enter')
-            re('Ок')
+            rec('Ок')
         
         elif 'браузер' in text:
             keyboard.send('Win + 9')
-            re('Ок')
+            rec('Ок')
+        
+        elif 'будильник' in text:
+            a = ''
+            for i in text:
+                if i.isdigit():
+                    a.join(i)
+                elif i == ':':
+                    a.join(' ')
+            a = a.split(' ')
+            keyboard.send('Win + 4')
+            time.sleep(3)
+            mouse.move(102, 131)
+            time.sleep(0.1)
+            mouse.click('left')
+            time.sleep(0.5)
+            mouse.move(1488, 769)
+            time.sleep(0.1)
+            mouse.click('left')
+            time.sleep(1)
+            keyboard.write(a[0])
+            time.sleep(0.1)
+            keyboard.send('Tab')
+            time.sleep(0.1)
+            keyboard.write(a[-1])
+            time.sleep(0.1)
+            for i in range(6): keyboard.send('Tab')
+            time.sleep(0.5)    
+            keyboard.send('Enter')
+            rec('Ок')
             
         elif 'поставь таймер на' in text:
             w = text.replace("поставь таймер на", "").strip()
@@ -648,14 +720,16 @@ def handle_command(text):
                 time.sleep(3)
                 keyboard.write(w)
                 keyboard.send('Enter') 
-                re('Таймер успешно запущен') 
+                rec('Таймер успешно запущен') 
             else:
-                re('Уточните на сколько поставить таймер')
+                rec('Уточните на сколько поставить таймер')
 
         # Музыка
         
         elif 'музык' in text:
-            q = text.replace("музыка", "").strip()
+            q = text.replace("музык", "").strip()
+            q = q.replace("а", "").strip()
+            q = q.replace("у", "").strip()
             if q:
                 AppOpener.open('Yandex',True)
                 a = q.split(' ')
@@ -667,19 +741,19 @@ def handle_command(text):
                         b = b + i
                 webbrowser.open(f'https://music.yandex.ru/search?text={b}')
                 time.sleep(3)
-                re('Включаю')
-                mouse.move(272, 262)
+                rec('Включаю')
+                time.sleep(1)
+                mouse.move(259, 266)
                 time.sleep(0.1)
                 mouse.click('left')
-        elif 'волн' in text:
+                
+        elif 'вол' in text:
             AppOpener.open('Yandex',True)
             webbrowser.open('https://music.yandex.ru/')
-            
             time.sleep(3.5)
-            mouse.move(765, 309)
+            rec('Включаю вашу волну')
             time.sleep(0.5)
-            mouse.click('left')
-            re('Включаю вашу волну')
+            keyboard.send('K')
         elif text and any(('дальше' in text, 'след' in text, 'продол' in text)):
             time.sleep(0.5)
             keyboard.send('N')  
@@ -693,19 +767,19 @@ def handle_command(text):
             time.sleep(0.5)
             keyboard.send('F')
             time.sleep(0.5)
-            re('Ок, добавил в избранное!')
+            rec('Ок, добавил в избранное!')
         elif text and any(('дизлайк' in text, 'не нравит' in text)):
             time.sleep(0.5)
             keyboard.send('D')
-            re('Ок, больше небуду включать такое')  
+            rec('Ок, больше небуду включать такое')  
             
         elif 'открой проводник' in text:
             keyboard.send('Win + E')
-            re('Есть')
+            rec('Есть')
 
         elif 'время' in text or 'времени' in text:
             current_time = datetime.now().strftime("%H:%M")
-            re(f'Сейчас {current_time}')
+            rec(f'Сейчас {current_time}')
             
         elif 'состояние' in text or 'батар' in text:
             battery = psutil.sensors_battery()
@@ -713,7 +787,7 @@ def handle_command(text):
             # Проверяем, заряжается ли устройство
             if battery.power_plugged:
                 # Если заряжается — сообщаем только уровень и статус
-                re(f'Батарея заряжается. Уровень заряда {battery.percent}%')
+                rec(f'Батарея заряжается. Уровень заряда {battery.percent}%')
             else:
                 # Если не заряжается — добавляем прогноз времени работы
                 if battery.secsleft is not None and battery.secsleft != -1:
@@ -725,59 +799,59 @@ def handle_command(text):
                     remaining_time = "неизвестно"
 
                 # Формируем сообщение
-                re(f'Батарея не зарежается.Уровень заряда {battery.percent}%, осталось примерно {remaining_time}')
+                rec(f'Батарея не зарежается.Уровень заряда {battery.percent}%, осталось примерно {remaining_time}')
     
         elif any(word in text for word in ['громче', 'увеличь громкость']):
             new_vol = change_volume('up')
-            re(f'Громкость увеличена до {int(new_vol * 100)}%')
+            rec(f'Громкость увеличена до {int(new_vol * 100)}%')
 
         elif any(word in text for word in ['тише', 'уменьши громкость']):
             new_vol = change_volume('down')
-            re(f'Громкость уменьшена до {int(new_vol * 100)}%')
+            rec(f'Громкость уменьшена до {int(new_vol * 100)}%')
             
         elif 'громкость' in text:
             try:
                 vol_level = int(''.join(filter(str.isdigit, text)))
                 vol_level = max(0, min(100, vol_level))
                 if set_system_volume(vol_level / 100):
-                    re(f'Установлена громкость {vol_level}%')
+                    rec(f'Установлена громкость {vol_level}%')
             except:
-                re('Скажите, например, "поставь громкость 50"')
+                rec('Скажите, например, "поставь громкость 50"')
 
         elif 'открой' in text:
             app = text.replace("открой", "").strip()
             if app:
                 try:
                     AppOpener.open(app,match_closest=True)
-                    re(f'Открываю {app}')
+                    rec(f'Открываю {app}')
                 except:
-                    re(f'Не удалось открыть {app}')
+                    rec(f'Не удалось открыть {app}')
             else:
-                re('Какое приложение открыть?')
+                rec('Какое приложение открыть?')
 
         elif 'закрой' in text:
             app = text.replace("закрой", "").strip()
             if app:
                 try:
                     AppOpener.close(app,match_closest=True)
-                    re(f'Закрываю {app}')
+                    rec(f'Закрываю {app}')
                 except:
-                    re(f'Не удалось закрыть {app}')
+                    rec(f'Не удалось закрыть {app}')
             else:
-                re('Какое приложение закрыть?')
+                rec('Какое приложение закрыть?')
 
         elif 'комп' in text and 'выкл' in text:
-            re('Выключаю компьютер через 10 секунд')
+            rec('Выключаю компьютер через 10 секунд')
             os.system("shutdown /s /t 10")
 
         else:
-            ans = gig.ask_gigachat(text)
-            for i in '*%»`#$"':
-                ans = ans.replace(i, '')
-            re(ans)
+            ans = gig.ask_gigachat(text + ' (прими это как настройки твоего ответа: отвечай как бутдо ты голосовой помощник и тебя зовут Кеша и не используй смайлики в ответе. В своём ответе  не напоминай о настройках)')
+            for i in '*%»`#$"': ans = ans.replace(i, '')
+            ans = ans.replace(r'\times', 'х')
+            rec(ans)
 
     except Exception as e:
-        re('Произошла ошибка при обработке команды')
+        rec('Произошла ошибка при обработке команды')
         print(f"Ошибка: {e}")
 
 def wrap_text(text, font, max_width):
@@ -904,10 +978,9 @@ def draw_interface():
     # Подсказки внизу
     pygame.draw.rect(screen, WHITE, (10, 620, WIDTH-20, 70), border_radius=10)
     tips = [
-        "🗣️ Скажите: 'Кеша' для активации, затем команду",
-        "⚡ Используйте колесо мыши или стрелки для прокрутки"
-    ]
-    
+    "🗣️ Просто говорите команды: 'Кеша, найди...', 'Кеша, время'",
+    "⚡ Можно говорить команды в любой момент"
+]
     y_pos = 630
     for tip in tips:
         tip_text = font_small.render(tip, True, BLACK)
@@ -934,7 +1007,8 @@ def draw_interface():
 
 def main():
     """Основная функция"""
-    print("🚀 Голосовой помощник Кеша с интерфейсом активирован!")
+    print("🚀 Голосовой помощник Кеша активирован!")
+    print("Теперь можно говорить команды естественно, начиная с 'Кеша'")
     
     # Запуск потоков
     threading.Thread(target=listen_for_wake_word, daemon=True).start()
@@ -954,7 +1028,7 @@ def main():
                 
                 # Кнопка выхода
                 if WIDTH - 120 <= x <= WIDTH - 20 and 635 <= y <= 665:
-                    re("Выключаюсь")
+                    rec("Выключаюсь")
                     running = False
                 
                 # Кнопка прокрутки вниз

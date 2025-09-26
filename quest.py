@@ -65,4 +65,5 @@ def game():
             elif choice == '2':
                 print("Вы уходите с поляны. Игра окончена.")
                 break
-game()
+if __name__ == "__main__":
+    game()

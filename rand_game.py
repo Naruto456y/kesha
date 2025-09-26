@@ -166,6 +166,8 @@ class NumberGuessingGame:
         print(f"⭐ Ваш счет: {self.score}")
 
 # Запуск игры
-if __name__ == "__main__":
+def game():
     game = NumberGuessingGame()
     game.main_menu()
+if __name__ == "__main__":
+    game()
