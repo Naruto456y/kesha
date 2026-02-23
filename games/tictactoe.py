@@ -1,3 +1,5 @@
+import random
+mode = None
 def tictactoe():
     ALL_SPACES = ('1', '2', '3', '4', '5', '6', '7', '8', '9')
     X, O, BLANK = 'X', 'O', ' '
@@ -33,10 +35,19 @@ def tictactoe():
         def getPlayerMove(self, player):
             """Let the player type in their move."""
             space = None
-            while space not in ALL_SPACES or not self._spaces[space] == BLANK:
-                print(f'Как ходит {player}? (1-9)\n')
-                space = input().upper()
-            return space
+            if mode == 'computer':
+                if player == O:
+                    while space not in ALL_SPACES or not self._spaces[space] == BLANK:
+                        print(f'Как ходит {player}? (1-9)\n')
+                        space = input().upper()
+                    return space
+                else:
+                    return random.choice(ALL_SPACES)
+            else:
+                while space not in ALL_SPACES or not self._spaces[space] == BLANK:
+                    print(f'Как ходит {player}? (1-9)\n')
+                    space = input().upper()
+                return space
 
         def isBoardFull(self):
             """Return True if every space on the board has been taken."""
@@ -52,6 +63,28 @@ def tictactoe():
     def main():
         """Runs a game of Tic-Tac-Toe."""
         print('Добро пожаловать в крестики-нолики!')
+        while True:
+            try:
+                inp = int(input('Выберите режим игры: 1 - игра против компьютера, 2 - игра против другого игрока\n'))
+                if inp == 1:
+                    mode = 'computer'
+                    print("X - компьютер, O - вы\n")
+                    break
+                elif inp == 2:
+                    mode = 'player'
+                    break
+                else:
+                    mode = 'player'
+            except ValueError:
+                try:
+                    if inp == '':
+                        mode = 'player'
+                        break
+                    print('Неверный ввод! Введите 1 или 2.\n')
+                    continue
+                except:
+                    print('Неверный ввод! Введите 1 или 2.\n')
+                    continue
         gameBoard = TicTacToeBoard()
         turn, nextTurn = X, O
 
