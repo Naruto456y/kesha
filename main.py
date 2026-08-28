@@ -44,5 +44,5 @@ def main():
         traceback.print_exc()
         input("Нажмите Enter для выхода...")
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()

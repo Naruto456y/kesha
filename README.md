@@ -1,44 +1,31 @@
-# 🎤 Кеша - Голосовой помощник
-![Kesha_icoc](https://github.com/user-attachments/assets/a1e0c88f-690c-4eed-93f0-8d4ed24f5341)
-![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Stars](https://img.shields.io/github/stars/Naruto456y/kesha?style=social)
+﻿# kesha
 
-**Кеша** — это голосовой помощник на русском языке, созданный с любовью и помощью DeepSeek. Он умеет общаться, отвечать на вопросы, играть в игры и многое другое!
+Голосовой ассистент с распознаванием речи (Vosk), управлением роботом Yahboom, играми и Telegram-ботом.
 
-> 🇷🇺 Голосовой помощник Кеша - ваш персональный ассистент с русской душой
-> 🇬🇧 Kesha is a voice assistant with a Russian soul
+## Стек технологий
 
+Python, Vosk, Pygame, Telegram Bot API, Raspbot_Lib
 
-## ✨ Возможности
+## Установка
 
-### 🗣️ Голосовое взаимодействие
-- Распознавание русской речи (требует улучшений — ваша помощь приветствуется!)
-- Озвучивание ответов
-- Естественный диалог
-
-### 🎮 Игры и развлечения
-Встроенные игры в папке `games/`:
-- Викторины
-- Загадки
-- И многое другое!
-
-### 🤖 Интеграции (в разработке)
-- Планируется интеграция с OpenAI/ChatGPT
-- Возможность расширения функционала
-- API для дополнительных навыков
-
-## 🛠 Установка
-
-### Быстрый старт
-
-```bash
-# Клонируйте репозиторий
-git clone https://github.com/Naruto456y/kesha.git
-cd kesha
-
-# Установите зависимости
+```powershell
 pip install -r requirements.txt
+```
 
-# Запустите помощника
-python main.py
+## Запуск
+
+```powershell
+python Kesha.py
+```
+
+Либо через готовую сборку: .\build.bat
+
+## Структура проекта
+
+```
+Kesha.py, build.bat, requirements.txt, games/, Media/, telebot/
+```
+
+## Автор
+
+[Yusuf](Naruto456y)
