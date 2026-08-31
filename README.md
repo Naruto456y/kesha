@@ -1,4 +1,4 @@
-<img width="1254" height="1254" alt="Kesha_icoc" src="https://github.com/user-attachments/assets/e110113b-f61f-4fb3-8fdc-2afe5ac8a3c0" />
+<img width="627" height="627" alt="Kesha_icoc" src="https://github.com/user-attachments/assets/e110113b-f61f-4fb3-8fdc-2afe5ac8a3c0" />
 
 
 # 🤖 Голосовой помощник Кеша
