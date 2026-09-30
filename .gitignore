@@ -1,5 +1,54 @@
-﻿__pycache__/
+# Конфиденциальные данные
+.env
+
+# Виртуальное окружение Python
+.venv/
+venv/
+
+# Мусор от VSCode и ОС
+.vscode/
+__pycache__/
 *.pyc
-*.spec
-*.exe
-releases/
+.DS_Store
+Thumbs.db
+# Сборка и артефакты
+build/
+dist/
+backups/
+.backup_*/
+all_code.txt
+*.wav
+models/
+logs/
+uploads/
+silero_v5_6_ru.pt
+
+data/
+
+# Бэкапы и временное
+*.bak
+*.broken
+.pytest_cache/
+voices_preview/
+.py
+kesha_compil/*.exe
+.claude/
+CLAUDE.md
+alice_skill/ngrok.txt
+
+# Секреты (никогда не коммитить)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.session
+*.session-journal
+*token*.txt
+*secret*
+*credentials*.json
+client_secret*.json
+ngrok.txt
+data/telegram_users.json

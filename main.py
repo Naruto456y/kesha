@@ -1,48 +1,60 @@
-# main.py
-import os
-import sys
-import traceback
+"""Точка входа проекта Кеша."""
+import argparse, threading, sys
 
-def resource_path(relative_path):
-    """Получить абсолютный путь к ресурсу для PyInstaller"""
-    try:
-        # PyInstaller создает временную папку, путь в _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    
-    return os.path.join(base_path, relative_path)
+
+def run_voice():
+    from voice import start_voice_loop
+    start_voice_loop()
+
+def run_telegram():
+    from telegram_bot import start_bot
+    start_bot()
+
+def run_alice():
+    from alice_skill import start_alice
+    start_alice()
+
+def run_website():
+    from website import start_website
+    start_website()
+
+def run_desktop():
+    from desktop.main import start_desktop
+    start_desktop()
+
 
 def main():
-    """Основная функция запуска приложения"""
-    print("Запуск голосового помощника Кеша...")
-    
-    # Для PyInstaller: добавляем правильные пути
-    if getattr(sys, 'frozen', False):
-        # Если приложение собрано в exe
-        application_path = sys._MEIPASS
-    else:
-        # Если запуск из исходного кода
-        application_path = os.path.dirname(os.path.abspath(__file__))
-    
-    sys.path.insert(0, application_path)
-    
-    try:
-        # Пытаемся импортировать и запустить основной модуль
-        from Kesha import main as kesha_main
-        kesha_main()
-    except ImportError as e:
-        print(f"Ошибка импорта: {e}")
-        print("Убедитесь, что все файлы находятся в одной папке:")
-        print("- Kesha.py")
-        print("- Все игровые файлы (*.py)")
-        print("- Иконка Kesha_icoc.ico")
-        input("Нажмите Enter для выхода...")
-    except Exception as e:
-        print(f"Критическая ошибка: {e}")
-        print("Детали ошибки:")
-        traceback.print_exc()
-        input("Нажмите Enter для выхода...")
+    p = argparse.ArgumentParser()
+    p.add_argument("--voice", action="store_true")
+    p.add_argument("--telegram", action="store_true")
+    p.add_argument("--alice", action="store_true")
+    p.add_argument("--web", action="store_true")
+    p.add_argument("--desktop", action="store_true")
+    p.add_argument("--all", action="store_true")
+    args = p.parse_args()
 
-if __name__ == "__main__": 
-    main()
+    import commands  # noqa: регистрация команд
+
+    threads = []
+    if args.voice or args.all:
+        threads.append(threading.Thread(target=run_voice, daemon=True, name="voice"))
+    if args.telegram or args.all:
+        threads.append(threading.Thread(target=run_telegram, daemon=True, name="telegram"))
+    if args.alice or args.all:
+        threads.append(threading.Thread(target=run_alice, daemon=True, name="alice"))
+    if args.web or args.all:
+        threads.append(threading.Thread(target=run_website, daemon=True, name="web"))
+
+    for t in threads:
+        t.start()
+        print("[main] Запущено:", t.name)
+
+    if args.desktop or args.all:
+        run_desktop()
+    else:
+        for t in threads:
+            t.join()
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)
