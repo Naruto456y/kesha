@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Кеша Веб-Бот</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🧸 Кеша <span>веб-бот</span></h1>
+            <div class="actions">
+                <button onclick="clearHistory()" style="background:rgba(255,0,0,0.3);">🗑 Очистить историю</button>
+                <button onclick="logout()">🚪 Выйти</button>
+            </div>
+        </div>
+
+        <!-- Трансляция -->
+        <div id="streamContainer" style="display:none; text-align:center; margin:10px 0; position:relative;">
+            <img id="streamImage" src="" style="width:100%; max-width:600px; border-radius:10px; border:2px solid #667eea; cursor:pointer;" alt="Прямая трансляция экрана" onclick="toggleFullscreen()">
+            <div style="margin-top:5px;">
+                <button onclick="toggleStream()" style="background:#667eea; color:white; border:none; padding:6px 12px; border-radius:20px;">Остановить трансляцию</button>
+                <button onclick="toggleFullscreen()" style="background:#2196F3; color:white; border:none; padding:6px 12px; border-radius:20px;">⛶ На весь экран</button>
+            </div>
+        </div>
+
+        <!-- Чат -->
+        <div class="chat-messages" id="chatMessages"></div>
+
+        <!-- Панель управления (сенсорный джойстик + доп. кнопки) -->
+        <div class="mouse-controls">
+            <!-- Сенсорный джойстик -->
+            <div class="joystick-container" id="joystick">
+                <div class="joystick-thumb" id="thumb"></div>
+            </div>
+
+            <!-- Дополнительные кнопки (скролл, клики, хаос, трансляция, повтор) -->
+            <div class="extra-controls">
+                <button class="ctrl-btn" id="leftClickBtn" style="background:#4CAF50;color:white;">🖱️ ЛК</button>
+                <button class="ctrl-btn" data-cmd="правый клик">🖱️ ПК</button>
+                <button class="ctrl-btn" data-cmd="скролл вверх">🔄 Вверх</button>
+                <button class="ctrl-btn" data-cmd="скролл вниз">🔄 Вниз</button>
+                <button class="ctrl-btn" data-cmd="хаос">🌀 Хаос</button>
+                <button class="ctrl-btn" data-cmd="стоп хаос">⏹️ Стоп хаос</button>
+                <button class="ctrl-btn" data-cmd="трансляция">📺 Трансляция</button>
+                <button class="ctrl-btn" id="repeatBtn" style="background:#ff9800;color:white;">🔁 Повтор</button>
+            </div>
+        </div>
+
+        <!-- Поля для текста и клавиш -->
+        <div class="text-controls">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <input type="text" id="typeTextInput" placeholder="Напечатай текст..." style="flex:1; padding:6px 10px; border-radius:20px; border:1px solid #ddd;">
+                <button onclick="sendTypeText()" style="background:#667eea; color:white; border:none; padding:6px 14px; border-radius:20px;">✍ Напечатай</button>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
+                <input type="text" id="keyInput" placeholder="Клавиша (например, enter)..." style="flex:1; padding:6px 10px; border-radius:20px; border:1px solid #ddd;">
+                <button onclick="sendKey()" style="background:#4CAF50; color:white; border:none; padding:6px 14px; border-radius:20px;">⌨ Нажми</button>
+            </div>
+        </div>
+
+        <!-- Быстрые кнопки -->
+        <div class="quick-commands" id="quickCommands"></div>
+
+        <!-- Ввод команды -->
+        <div class="input-area">
+            <button class="file-upload-btn" onclick="document.getElementById('fileInput').click()">📎</button>
+            <input type="file" id="fileInput" accept="image/*,video/*,audio/*,application/*" multiple>
+            <input type="text" id="commandInput" placeholder="Введите команду..." autofocus>
+            <button onclick="sendCommand()" id="sendBtn">Отправить</button>
+        </div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>

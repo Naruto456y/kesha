@@ -6,6 +6,8 @@
 from dotenv import load_dotenv
 load_dotenv()  # загружаем .env из корня проекта
 
+import re
+
 from config import WAKE_WORDS
 
 
@@ -19,15 +21,17 @@ class CommandRegistry:
     def __init__(self):
         self.commands = []
 
-    def command(self, patterns, description="", category="Общее"):
+    def command(self, patterns, description="", category="Общее", priority=0):
         def decorator(func):
             self.commands.append({
                 "patterns": [p.lower() for p in patterns],
                 "func": func,
                 "description": description,
                 "category": category,
+                "priority": priority,
                 "name": func.__name__,
             })
+            self.commands.sort(key=lambda c: -c.get("priority", 0))
             return func
         return decorator
 
@@ -119,10 +123,10 @@ def handle_command(text: str, source: str = "app") -> str:
     clean = remove_wake_words(text)
 
     for cmd in registry.commands:
-        if any(pattern in clean for pattern in cmd["patterns"]):
+        if any(re.search(r'\b' + re.escape(p) + r'\b', clean) for p in cmd["patterns"]):
             try:
                 response = cmd["func"](clean)
-                if response:
+                if response is not None:
                     emit_event(source, text, response)
                     return response
             except Exception as e:
@@ -151,15 +155,14 @@ def list_commands():
 
 
 if __name__ == "__main__":
-    # print("Проверка core.py")
-    # print("AI доступен:", AI_AVAILABLE)
+    print("Проверка core.py")
+    print("AI доступен:", AI_AVAILABLE)
 
-    # def test_sub(source, text, response):
-    #     print(f"  [event] {source}: '{text}' -> '{response}'")
+    def test_sub(source, text, response):
+        print(f"  [event] {source}: '{text}' -> '{response}'")
 
-    # subscribe(test_sub)
+    subscribe(test_sub)
 
-    # print("\nТест handle_command:")
-    # result = handle_command("привет", source="app")
-    # print(f"  Ответ: {result}")
-    print(ai_ask("Какой сегодня день недели?"))
+    print("\nТест handle_command:")
+    result = handle_command("привет", source="app")
+    print(f"  Ответ: {result}")

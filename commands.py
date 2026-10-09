@@ -7,19 +7,20 @@
     def my_command(text):
         # ... логика ...
         return "Что сказать пользователю"
-
-Порядок имеет значение: специфичные команды (например, "открой проводник")
-должны идти РАНЬШЕ общих ("открой") — иначе общая перехватит.
 """
 
 from core import registry
 
 import os
+import sys
 import time
 import random
 import webbrowser
 import subprocess
+import threading
+from urllib.parse import quote
 from datetime import datetime, timedelta, date
+from pathlib import Path
 
 import keyboard
 import mouse
@@ -27,24 +28,42 @@ import psutil
 import requests
 import AppOpener
 
+from help_manager import ImportManager as _im
+
 from config import (
     APP_PATHS, GAMES_PATHS, TIMER_PATH,
     WEATHER_API_KEY, WEATHER_CITY,
     GREETINGS, THANKS_RESPONSES, OK_RESPONSES, SEARCH_RESPONSES,
 )
 
+try:
+    from PIL import ImageGrab
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+try:
+    from help_manager import GigaChat, Manager
+    Manager.load_env()
+    _gig = GigaChat()
+    GIGACHAT_AVAILABLE = True
+except Exception as e:
+    print(f"[commands] GigaChat недоступен: {e}")
+    _gig = None
+    GIGACHAT_AVAILABLE = False
+
+BASE_DIR = Path(__file__).parent
+
 
 def _r(lst):
-    """Случайный элемент из списка."""
     return random.choice(lst)
 
 
 def _launch_game(key):
-    """Запуск игры из GAMES_PATHS."""
     path = GAMES_PATHS.get(key)
     if path and os.path.exists(path):
         try:
-            subprocess.Popen(["python", path], shell=False)
+            subprocess.Popen([sys.executable, path], shell=False)
             return "Запускаю игру"
         except Exception as e:
             return f"Ошибка запуска: {e}"
@@ -52,7 +71,6 @@ def _launch_game(key):
 
 
 def _get_volume():
-    """Получить текущую громкость (0.0 – 1.0)."""
     try:
         from ctypes import cast, POINTER
         from comtypes import CLSCTX_ALL
@@ -66,7 +84,6 @@ def _get_volume():
 
 
 def _set_volume(level):
-    """Установить громкость (0.0 – 1.0)."""
     try:
         from ctypes import cast, POINTER
         from comtypes import CLSCTX_ALL
@@ -80,12 +97,19 @@ def _set_volume(level):
         return False
 
 
+def _extract_query(text, words):
+    q = text.lower()
+    for w in words:
+        q = q.replace(w, "")
+    return q.strip()
+
+
 # ============================================================
-#  ОСНОВНЫЕ КОМАНДЫ
+#  ОСНОВНЫЕ
 # ============================================================
 
 @registry.command(
-    ["привет", "здравствуй", "хай", "добрый день", "доброе утро"],
+    ["привет", "здравствуй", "хай", "добрый день", "доброе утро", "приветствую", "здарова"],
     "Поздороваться", "Основные", priority=10,
 )
 def greeting(text):
@@ -93,7 +117,7 @@ def greeting(text):
 
 
 @registry.command(
-    ["как дела", "как жизнь", "как настроение", "как ты"],
+    ["как дела", "как жизнь", "как настроение", "как ты", "как поживаешь"],
     "Узнать состояние", "Основные", priority=10,
 )
 def how_are_you(text):
@@ -101,7 +125,7 @@ def how_are_you(text):
 
 
 @registry.command(
-    ["молодец", "спасибо", "благодарю", "умница"],
+    ["молодец", "спасибо", "благодарю", "умница", "красава"],
     "Похвалить", "Основные", priority=10,
 )
 def thanks(text):
@@ -137,7 +161,7 @@ def get_date(text):
 
 
 @registry.command(
-    ["батарея", "заряд", "уровень заряда"],
+    ["батарея", "заряд", "уровень заряда", "состояние батареи"],
     "Уровень батареи", "Система",
 )
 def get_battery(text):
@@ -180,7 +204,7 @@ def sleep_pc(text):
 
 
 @registry.command(
-    ["заблокируй компьютер", "блокировка", "заблокируй пк"],
+    ["заблокируй компьютер", "блокировка", "заблокируй пк", "блокни"],
     "Заблокировать ПК", "Система",
 )
 def lock_pc(text):
@@ -193,7 +217,7 @@ def lock_pc(text):
 # ============================================================
 
 @registry.command(
-    ["сверни", "свернуть окно", "сверни окно"],
+    ["сверни окно", "сверни", "свернуть окно"],
     "Свернуть окно", "Система",
 )
 def minimize_window(text):
@@ -211,7 +235,7 @@ def close_window(text):
 
 
 @registry.command(
-    ["открой проводник", "проводник", "файловый менеджер"],
+    ["открой проводник", "проводник", "файловый менеджер", "папка"],
     "Открыть проводник", "Система", priority=5,
 )
 def open_explorer(text):
@@ -228,17 +252,8 @@ def open_settings(text):
     return "Настройки открыты"
 
 
-@registry.command(
-    ["камера", "открой камеру"],
-    "Открыть камеру", "Система", priority=5,
-)
-def open_camera(text):
-    keyboard.send("win+2")
-    return "Открываю камеру"
-
-
 # ============================================================
-#  ГРОМКОСТЬ (pycaw)
+#  ГРОМКОСТЬ
 # ============================================================
 
 @registry.command(
@@ -281,6 +296,113 @@ def set_volume(text):
 
 
 # ============================================================
+#  МЫШЬ
+# ============================================================
+
+@registry.command(
+    ["мышь вверх", "курсор вверх"],
+    "Мышь вверх", "Система", priority=5,
+)
+def mouse_up(text):
+    mouse.move(0, -50, absolute=False, duration=0.1)
+    return "Мышь вверх"
+
+
+@registry.command(
+    ["мышь вниз", "курсор вниз"],
+    "Мышь вниз", "Система", priority=5,
+)
+def mouse_down(text):
+    mouse.move(0, 50, absolute=False, duration=0.1)
+    return "Мышь вниз"
+
+
+@registry.command(
+    ["мышь влево", "курсор влево"],
+    "Мышь влево", "Система", priority=5,
+)
+def mouse_left(text):
+    mouse.move(-50, 0, absolute=False, duration=0.1)
+    return "Мышь влево"
+
+
+@registry.command(
+    ["мышь вправо", "курсор вправо"],
+    "Мышь вправо", "Система", priority=5,
+)
+def mouse_right(text):
+    mouse.move(50, 0, absolute=False, duration=0.1)
+    return "Мышь вправо"
+
+
+@registry.command(
+    ["левый клик", "левый", "лкм"],
+    "ЛКМ", "Система",
+)
+def click_left(text):
+    mouse.click("left")
+    return "Левый клик"
+
+
+@registry.command(
+    ["правый клик", "правый", "пкм"],
+    "ПКМ", "Система",
+)
+def click_right(text):
+    mouse.click("right")
+    return "Правый клик"
+
+
+@registry.command(
+    ["скролл вниз", "прокрути вниз", "пролистай вниз"],
+    "Скролл вниз", "Система", priority=5,
+)
+def scroll_down(text):
+    mouse.wheel(-3)
+    return "Скролл вниз"
+
+
+@registry.command(
+    ["скролл вверх", "прокрути вверх", "пролистай вверх"],
+    "Скролл вверх", "Система", priority=5,
+)
+def scroll_up(text):
+    mouse.wheel(3)
+    return "Скролл вверх"
+
+
+# ============================================================
+#  КЛАВИАТУРА
+# ============================================================
+
+@registry.command(
+    ["напечатай", "напиши"],
+    "Напечатать текст", "Система",
+)
+def type_text(text):
+    t = _extract_query(text, ["напечатай", "напиши"])
+    if t:
+        keyboard.write(t)
+        return f"Напечатал: {t}"
+    return "Что напечатать?"
+
+
+@registry.command(
+    ["нажми клавишу", "нажми"],
+    "Нажать клавишу", "Система",
+)
+def press_key(text):
+    key = _extract_query(text, ["нажми клавишу", "нажми"])
+    if key:
+        try:
+            keyboard.send(key)
+            return f"Нажал {key}"
+        except Exception as e:
+            return f"Не удалось нажать {key}: {e}"
+    return "Какую клавишу?"
+
+
+# ============================================================
 #  ПОИСК И ИНТЕРНЕТ
 # ============================================================
 
@@ -289,10 +411,7 @@ def set_volume(text):
     "Поиск на YouTube", "Интернет", priority=5,
 )
 def search_youtube(text):
-    query = text
-    for w in ["найди в ютуби", "поищи в ютубе", "видео в ютубе", "найди в ютубе"]:
-        query = query.replace(w, "")
-    query = query.strip()
+    query = _extract_query(text, ["найди в ютуби", "поищи в ютубе", "видео в ютубе", "найди в ютубе"])
     if not query:
         return "Что искать?"
     try:
@@ -307,17 +426,14 @@ def search_youtube(text):
 
 
 @registry.command(
-    ["найди", "поищи", "погугли", "загугли"],
+    ["найди", "поищи", "погугли", "загугли", "поиск"],
     "Поиск в интернете", "Интернет",
 )
 def search_web(text):
-    query = text
-    for w in ["найди", "поищи", "погугли", "загугли"]:
-        query = query.replace(w, "")
-    query = query.strip()
+    query = _extract_query(text, ["найди", "поищи", "погугли", "загугли", "поиск"])
     if not query:
         return "Что искать?"
-    webbrowser.open(f"https://yandex.ru/search/?text={query}")
+    webbrowser.open(f"https://yandex.ru/search/?text={quote(query)}")
     return _r(SEARCH_RESPONSES)
 
 
@@ -331,10 +447,10 @@ def open_youtube(text):
 
 
 @registry.command(
-    ["погода", "температура на улице", "какая погода"],
+    ["погода", "температура на улице", "какая погода", "что на улице"],
     "Узнать погоду", "Интернет",
 )
-def get_weather(text):
+def get_weather_cmd(text):
     try:
         url = (
             f"http://api.openweathermap.org/data/2.5/weather"
@@ -358,7 +474,7 @@ def open_translator(text):
 
 
 @registry.command(
-    ["дипси", "deepseek", "открой дипси"],
+    ["дипси", "deepseek", "чат gpt"],
     "Открыть DeepSeek", "Интернет", priority=5,
 )
 def open_deepseek(text):
@@ -367,7 +483,7 @@ def open_deepseek(text):
 
 
 @registry.command(
-    ["игры яндекс", "яндекс игры", "игры"],
+    ["игры яндекс", "яндекс игры", "поиграть"],
     "Открыть Яндекс Игры", "Интернет", priority=5,
 )
 def open_yandex_games(text):
@@ -398,7 +514,7 @@ def school_marks(text):
 
 
 @registry.command(
-    ["расписание", "расписание на завтра"],
+    ["расписание", "расписание на завтра", "уроки на завтра"],
     "Расписание на завтра", "Учёба",
 )
 def school_schedule(text):
@@ -439,7 +555,7 @@ def open_roblox(text):
 
 
 @registry.command(
-    ["браузер", "открой браузер"],
+    ["браузер", "открой браузер", "интернет", "яндекс"],
     "Открыть браузер", "Система", priority=5,
 )
 def open_browser(text):
@@ -452,16 +568,28 @@ def open_browser(text):
 
 
 @registry.command(
+    ["открой вс код", "открой visual studio code", "открой vs code", "открой визуалку"],
+    "Открыть VS Code", "Система", priority=6,
+)
+def open_vscode(text):
+    path = APP_PATHS.get("visual studio code") or APP_PATHS.get("вс код")
+    if path and os.path.exists(path):
+        os.startfile(path)
+        return "Открываю Visual Studio Code"
+    keyboard.send("win+1")
+    return "Открываю Visual Studio Code"
+
+
+@registry.command(
     ["открой"],
     "Открыть приложение", "Система",
 )
 def open_app(text):
-    # исключения, которые обрабатываются другими командами
     skip = [
         "проводник", "настройки", "roblox", "роблокс",
         "minecraft", "майн", "камер", "селфи", "браузер", "яндекс",
         "ютуб", "youtube", "дипси", "deepseek", "переводчик",
-        "игры", "музык", "вол", "избр",
+        "игры", "музык", "вол", "избр", "вс код", "visual studio", "vs code",
     ]
     if any(s in text for s in skip):
         return None
@@ -470,9 +598,8 @@ def open_app(text):
     if not app:
         return "Что открыть?"
 
-    # 1. Ищем в APP_PATHS
     for key, path in APP_PATHS.items():
-        if key in app or app in key:
+        if key in app:
             if os.path.exists(path):
                 try:
                     os.startfile(path)
@@ -480,7 +607,6 @@ def open_app(text):
                 except Exception:
                     pass
 
-    # 2. Fallback на AppOpener
     try:
         AppOpener.open(app, match_closest=True)
         return f"Открываю {app}"
@@ -504,7 +630,7 @@ def close_app(text):
 
 
 # ============================================================
-#  ИГРЫ (из GAMES_PATHS)
+#  ИГРЫ
 # ============================================================
 
 @registry.command(
@@ -544,24 +670,19 @@ def game_guess(text):
 
 
 # ============================================================
-#  МЕДИА (музыка, управление треками через клавиши Яндекс.Музыки)
+#  МЕДИА
 # ============================================================
 
 @registry.command(
-    ["музыка", "включи музыку", "поставь музыку"],
+    ["музыка", "включи музыку", "поставь музыку", "музон", "трек", "песня"],
     "Включить музыку", "Медиа",
 )
 def play_music(text):
-    query = text
-    for w in ["музыка", "включи музыку", "поставь музыку", "включи", "поставь"]:
-        query = query.replace(w, "")
-    query = query.strip()
+    query = _extract_query(text, ["включи музыку", "поставь музыку", "музыка", "музон", "трек", "песня"])
     if query:
         try:
             AppOpener.open("Yandex", True)
-            webbrowser.open(
-                f"https://music.yandex.ru/search?text={query.replace(' ', '+')}"
-            )
+            webbrowser.open(f"https://music.yandex.ru/search?text={quote(query)}")
             return f"Ищу: {query}"
         except Exception:
             return "Ошибка запуска музыки"
@@ -570,7 +691,7 @@ def play_music(text):
 
 
 @registry.command(
-    ["моя волна", "волну", "избранное", "мою волну"],
+    ["моя волна", "волну", "избранное", "мою волну", "любимое"],
     "Моя волна", "Медиа",
 )
 def play_wave(text):
@@ -578,7 +699,7 @@ def play_wave(text):
         AppOpener.open("Yandex", True)
         webbrowser.open("https://music.yandex.ru/")
         time.sleep(2)
-        keyboard.send("K")
+        keyboard.send("k")
         return "Включаю мою волну"
     except Exception:
         return "Ошибка"
@@ -589,7 +710,7 @@ def play_wave(text):
     "Пауза", "Медиа",
 )
 def music_pause(text):
-    keyboard.send("K")
+    keyboard.send("k")
     return "Пауза"
 
 
@@ -598,7 +719,7 @@ def music_pause(text):
     "Следующий трек", "Медиа",
 )
 def music_next(text):
-    keyboard.send("N")
+    keyboard.send("n")
     return "Следующий"
 
 
@@ -607,7 +728,7 @@ def music_next(text):
     "Предыдущий трек", "Медиа",
 )
 def music_prev(text):
-    keyboard.send("P")
+    keyboard.send("p")
     return "Предыдущий"
 
 
@@ -616,7 +737,7 @@ def music_prev(text):
     "В избранное", "Медиа",
 )
 def music_like(text):
-    keyboard.send("F")
+    keyboard.send("f")
     return "Добавил в избранное"
 
 
@@ -625,72 +746,300 @@ def music_like(text):
     "Дизлайк", "Медиа",
 )
 def music_dislike(text):
-    keyboard.send("D")
+    keyboard.send("d")
     return "Убрал из рекомендаций"
 
 
 # ============================================================
-#  МЫШЬ И КЛАВИАТУРА
+#  СКРИНШОТ / СЕЛФИ / КАМЕРА
 # ============================================================
 
 @registry.command(
-    ["левый клик", "левый", "лкм"],
-    "ЛКМ", "Система",
+    ["скриншот", "сделай скрин", "заскринь", "сфоткай экран", "дай скрин"],
+    "Скриншот экрана", "Специальные", priority=6,
 )
-def click_left(text):
-    mouse.click("left")
-    return "Левый клик"
+def make_screenshot(text):
+    if not PIL_AVAILABLE:
+        return "Библиотека Pillow не установлена"
+    try:
+        shot = ImageGrab.grab()
+        fname = f"screenshot_{int(time.time())}.png"
+        uploads = BASE_DIR / "uploads"
+        uploads.mkdir(exist_ok=True)
+        shot.save(uploads / fname)
+        return f"Скриншот сохранён: /uploads/{fname}"
+    except Exception as e:
+        return f"Ошибка скриншота: {e}"
 
 
 @registry.command(
-    ["правый клик", "правый", "пкм"],
-    "ПКМ", "Система",
+    ["камера", "открой камеру"],
+    "Открыть камеру", "Система", priority=5,
 )
-def click_right(text):
-    mouse.click("right")
-    return "Правый клик"
-
-
-@registry.command(["вниз"], "Скролл вниз", "Система")
-def scroll_down(text):
-    mouse.wheel(-1)
-    return ""
-
-
-@registry.command(["верх"], "Скролл вверх", "Система")
-def scroll_up(text):
-    mouse.wheel(1)
-    return ""
+def open_camera(text):
+    keyboard.send("win+2")
+    return "Открываю камеру"
 
 
 @registry.command(
-    ["напечатай", "напиши"],
-    "Напечатать текст", "Система",
+    ["селфи", "сделай селфи", "сфоткай меня", "сделай фото"],
+    "Сделать селфи", "Специальные",
 )
-def type_text(text):
-    t = text
-    for w in ["напечатай", "напиши"]:
-        t = t.replace(w, "")
-    t = t.strip()
-    if t:
-        keyboard.write(t)
-        return f"Напечатал: {t}"
-    return "Что напечатать?"
+def take_selfie(text):
+    keyboard.send("win+2")
+
+    def _snap():
+        time.sleep(3)
+        keyboard.send("space")
+
+    threading.Timer(0, _snap).start()
+    return "Улыбнитесь!"
+
+
+# ============================================================
+#  УМНЫЙ ДОМ (Яндекс)
+# ============================================================
+
+_HOME_MODULE_PATH = r"C:\Users\Yusuf\Programming\Python\libraries\yandex_smart_home\yandex_smart_home.py"
+_DEFAULT_LIGHT = "Саске"
+_home_instance = None
+
+
+def _get_home():
+    global _home_instance
+    if _home_instance is not None:
+        return _home_instance
+    try:
+        mod = _im.import_module(_HOME_MODULE_PATH)
+        _home_instance = mod.SmartHome()
+        return _home_instance
+    except Exception as e:
+        print(f"[smarthome] не удалось загрузить модуль: {e}")
+        return None
+
+
+def _extract_device(text, triggers):
+    t = text.lower().strip()
+    for tr in triggers:
+        t = t.replace(tr, " ")
+    for w in ["лампу", "лампочку", "светильник", "устройство", "свет",
+              "включи", "выключи", "зажги", "погаси", "на", "у", "для"]:
+        t = t.replace(w, " ")
+    return " ".join(t.split()).strip()
+
+
+def _resolve_device(name):
+    if not name:
+        return _DEFAULT_LIGHT
+    return name[0].upper() + name[1:]
 
 
 @registry.command(
-    ["нажми клавишу", "нажми"],
-    "Нажать клавишу", "Система",
+    ["включи лампу", "включи свет", "включи светильник", "включи лампочку", "зажги свет"],
+    "Умный дом: включить", "Умный дом", priority=8,
 )
-def press_key(text):
-    key = text
-    for w in ["нажми клавишу", "нажми"]:
-        key = key.replace(w, "")
-    key = key.strip()
-    if key:
-        keyboard.send(key)
-        return f"Нажал {key}"
-    return "Какую клавишу?"
+def light_on(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+    triggers = ["включи лампу", "включи свет", "включи светильник", "включи лампочку", "зажги свет"]
+    device = _resolve_device(_extract_device(text, triggers))
+    try:
+        home.device(device).turn_on()
+        return f"Включаю {device}"
+    except Exception as e:
+        return f"Не удалось включить {device}: {e}"
+
+
+@registry.command(
+    ["выключи лампу", "выключи свет", "выключи светильник", "выключи лампочку", "погаси свет"],
+    "Умный дом: выключить", "Умный дом", priority=8,
+)
+def light_off(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+    triggers = ["выключи лампу", "выключи свет", "выключи светильник", "выключи лампочку", "погаси свет"]
+    device = _resolve_device(_extract_device(text, triggers))
+    try:
+        home.device(device).turn_off()
+        return f"Выключаю {device}"
+    except Exception as e:
+        return f"Не удалось выключить {device}: {e}"
+
+
+@registry.command(
+    ["яркость", "поставь яркость", "установи яркость", "сделай яркость"],
+    "Умный дом: яркость", "Умный дом", priority=8,
+)
+def light_brightness(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+
+    digits = "".join(filter(str.isdigit, text))
+    if not digits:
+        return "Скажите, например: яркость 50 на Саске"
+    value = max(1, min(100, int(digits)))
+
+    triggers = ["поставь яркость", "установи яркость", "сделай яркость", "яркость"]
+    device = _resolve_device(_extract_device(text, triggers))
+    try:
+        home.device(device).turn_on()
+        home.device(device).set_brightness(value)
+        return f"Яркость {value}% на {device}"
+    except Exception as e:
+        return f"Не удалось поставить яркость: {e}"
+
+
+@registry.command(
+    ["цветовая температура", "температура света", "поставь температуру света",
+     "поставь цветовую температуру", "установи цветовую температуру"],
+    "Умный дом: цветовая температура", "Умный дом", priority=8,
+)
+def light_temperature(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+
+    digits = "".join(filter(str.isdigit, text))
+    if not digits:
+        return "Скажите, например: цветовая температура 4000"
+    value = max(1500, min(9000, int(digits)))
+
+    triggers = ["поставь цветовую температуру", "установи цветовую температуру",
+                "поставь температуру света", "цветовая температура", "температура света"]
+    device = _resolve_device(_extract_device(text, triggers))
+    try:
+        home.device(device).turn_on()
+        home.device(device).set_temperature(value)
+        return f"Температура света {value}K на {device}"
+    except Exception as e:
+        return f"Не удалось поставить температуру: {e}"
+
+
+@registry.command(
+    ["статус лампы", "статус света", "статус светильника"],
+    "Умный дом: статус устройства", "Умный дом", priority=8,
+)
+def light_status(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+
+    triggers = ["статус лампы", "статус света", "статус светильника"]
+    device = _resolve_device(_extract_device(text, triggers))
+
+    try:
+        d = home.device(device)
+        info = d.get_status() if hasattr(d, "get_status") else None
+        if info:
+            return f"{device}: {info}"
+        return f"{device} доступен"
+    except Exception as e:
+        return f"Не удалось получить статус {device}: {e}"
+
+
+@registry.command(
+    ["список устройств", "какие устройства", "мои устройства"],
+    "Умный дом: список устройств", "Умный дом", priority=8,
+)
+def smarthome_list(text):
+    home = _get_home()
+    if home is None:
+        return "Модуль умного дома недоступен"
+
+    try:
+        devices = None
+        for attr in ("devices", "list_devices", "get_devices"):
+            if hasattr(home, attr):
+                v = getattr(home, attr)
+                devices = v() if callable(v) else v
+                break
+        if not devices:
+            return "Список устройств недоступен"
+        names = [d if isinstance(d, str) else getattr(d, "name", str(d)) for d in devices]
+        return "Устройства: " + ", ".join(names)
+    except Exception as e:
+        return f"Не удалось получить список: {e}"
+
+
+# ============================================================
+#  ХАОС
+# ============================================================
+
+chaos_active = False
+chaos_thread = None
+chaos_stop_event = threading.Event()
+
+
+def _chaos_worker():
+    while not chaos_stop_event.is_set():
+        time.sleep(random.uniform(0.05, 0.2))
+        action = random.randint(0, 10)
+        try:
+            if action == 0:
+                mouse.move(random.randint(0, 1920), random.randint(0, 1080),
+                           absolute=False, duration=0.01)
+            elif action == 1:
+                mouse.click("left")
+            elif action == 2:
+                mouse.click("right")
+            elif action == 3:
+                mouse.double_click("left")
+            elif action == 4:
+                mouse.wheel(random.randint(-3, 3))
+            elif action == 5:
+                keys = list("abcdefghijklmnopqrstuvwxyz0123456789") + \
+                       ["space", "enter", "tab", "escape", "backspace", "delete"]
+                keyboard.send(random.choice(keys))
+            elif action == 6:
+                keyboard.send("alt+tab")
+                time.sleep(0.05)
+            elif action == 7:
+                try:
+                    cur = _get_volume()
+                    _set_volume(max(0.0, min(1.0, cur + random.uniform(-0.3, 0.3))))
+                except Exception:
+                    pass
+            elif action == 8:
+                keyboard.send(random.choice(["ctrl+c", "ctrl+v", "win+d", "win+e", "win+i", "alt+f4"]))
+            elif action == 9:
+                for i in range(5):
+                    if chaos_stop_event.is_set():
+                        break
+                    o = i * 10
+                    mouse.move(o, 0, absolute=False, duration=0.01)
+                    mouse.move(0, o, absolute=False, duration=0.01)
+                    mouse.move(-o, 0, absolute=False, duration=0.01)
+                    mouse.move(0, -o, absolute=False, duration=0.01)
+            elif action == 10:
+                mouse.click("right")
+                time.sleep(0.02)
+                mouse.wheel(random.randint(-2, 2))
+        except Exception as e:
+            print(f"Chaos error: {e}")
+
+
+@registry.command(
+    ["хаос", "запусти хаос", "активируй хаос"],
+    "Запустить хаос", "Специальные", priority=10,
+)
+def start_chaos(text):
+    global chaos_active, chaos_thread, chaos_stop_event
+    if "стоп" in text or "останови" in text or "выключи" in text:
+        if not chaos_active:
+            return "Хаос не запущен"
+        chaos_stop_event.set()
+        chaos_active = False
+        return "Хаос остановлен"
+    if chaos_active:
+        return "Хаос уже запущен"
+    chaos_stop_event.clear()
+    chaos_thread = threading.Thread(target=_chaos_worker, daemon=True)
+    chaos_thread.start()
+    chaos_active = True
+    return "ХАОС АКТИВИРОВАН"
 
 
 # ============================================================
@@ -699,65 +1048,50 @@ def press_key(text):
 
 @registry.command(
     ["переведи на английский"],
-    "Перевод RU→EN", "Специальные",
+    "Перевод RU→EN", "Специальные", priority=6,
 )
 def translate_en(text):
     query = text.replace("переведи на английский", "").strip()
     if not query:
         return "Что перевести?"
-    webbrowser.open(f"https://translate.yandex.ru/?lang=ru-en&text={query}")
+    if GIGACHAT_AVAILABLE and _gig is not None:
+        try:
+            ans = _gig.chat(f"Переведи на английский: {query}. Без объяснений.")
+            return ans.strip() if ans else "Не удалось перевести"
+        except Exception as e:
+            print(f"[translate_en] {e}")
+    webbrowser.open(f"https://translate.yandex.ru/?lang=ru-en&text={quote(query)}")
     return "Открываю переводчик"
 
 
 @registry.command(
     ["переведи на русский"],
-    "Перевод EN→RU", "Специальные",
+    "Перевод EN→RU", "Специальные", priority=6,
 )
 def translate_ru(text):
     query = text.replace("переведи на русский", "").strip()
     if not query:
         return "Что перевести?"
-    webbrowser.open(f"https://translate.yandex.ru/?lang=en-ru&text={query}")
+    if GIGACHAT_AVAILABLE and _gig is not None:
+        try:
+            ans = _gig.chat(f"Переведи на русский: {query}. Без объяснений.")
+            return ans.strip() if ans else "Не удалось перевести"
+        except Exception as e:
+            print(f"[translate_ru] {e}")
+    webbrowser.open(f"https://translate.yandex.ru/?lang=en-ru&text={quote(query)}")
     return "Открываю переводчик"
 
 
 @registry.command(
-    ["нарисуй", "покажи картинку", "покажи изображение"],
+    ["нарисуй", "покажи картинку", "покажи изображение", "изображение"],
     "Поиск картинок", "Специальные",
 )
 def draw(text):
-    query = text
-    for w in ["нарисуй", "покажи картинку", "покажи изображение", "изображение"]:
-        query = query.replace(w, "")
-    query = query.strip()
+    query = _extract_query(text, ["нарисуй", "покажи картинку", "покажи изображение", "изображение"])
     if not query:
         return "Что нарисовать?"
-    webbrowser.open(f"https://yandex.ru/images/search?text={query}")
+    webbrowser.open(f"https://yandex.ru/images/search?text={quote(query)}")
     return "Ищу изображения"
-
-
-@registry.command(
-    ["включи свет", "включи светильник"],
-    "Умный дом: свет вкл", "Специальные",
-)
-def light_on(text):
-    webbrowser.open("https://alice.yandex.ru/")
-    time.sleep(2)
-    keyboard.write("Включи светильник")
-    keyboard.send("Enter")
-    return "Свет включён"
-
-
-@registry.command(
-    ["выключи свет", "выключи светильник"],
-    "Умный дом: свет выкл", "Специальные",
-)
-def light_off(text):
-    webbrowser.open("https://alice.yandex.ru/")
-    time.sleep(2)
-    keyboard.write("Выключи светильник")
-    keyboard.send("Enter")
-    return "Свет выключен"
 
 
 @registry.command(
@@ -765,10 +1099,12 @@ def light_off(text):
     "Выключить свет и ПК", "Специальные", priority=15,
 )
 def leaving_home(text):
-    webbrowser.open("https://alice.yandex.ru/")
-    time.sleep(2)
-    keyboard.write("Выключи светильник")
-    keyboard.send("Enter")
+    home = _get_home()
+    if home is not None:
+        try:
+            home.device(_DEFAULT_LIGHT).turn_off()
+        except Exception as e:
+            print(f"[leaving_home] свет: {e}")
     os.system("shutdown /s /t 10")
     return "Выключаю свет и компьютер. До свидания!"
 
@@ -790,7 +1126,7 @@ def set_timer(text):
     )
     if duration.isdigit():
         if os.path.exists(TIMER_PATH):
-            subprocess.Popen(["python", TIMER_PATH])
+            subprocess.Popen([sys.executable, TIMER_PATH])
             time.sleep(2)
             keyboard.write(duration)
             keyboard.send("Enter")
@@ -815,7 +1151,7 @@ def toggle_bluetooth(text):
 
 
 @registry.command(
-    ["телефон", "позвони", "совершить звонок"],
+    ["телефон", "позвони", "совершить звонок", "звонок"],
     "Позвонить", "Специальные",
 )
 def call(text):
@@ -831,14 +1167,112 @@ def call(text):
     return "Звоню"
 
 
-@registry.command(
-    ["селфи", "сделай селфи", "сфоткай меня"],
-    "Сделать селфи", "Специальные",
-)
-def take_selfie(text):
-    keyboard.send("win+2")
-    time.sleep(2)
-    msg = "Улыбнитесь!"
-    time.sleep(1.5)
-    keyboard.send("space")
-    return msg
+# ============================================================
+#  КАТЕГОРИИ ДЛЯ САЙТА
+# ============================================================
+
+COMMAND_CATEGORIES = {
+    "Основные": [
+        "привет – поздороваться",
+        "как дела – узнать состояние",
+        "молодец – похвалить",
+        "пока – попрощаться",
+    ],
+    "Интернет и поиск": [
+        "найди [запрос] – поиск в Яндексе",
+        "найди в ютубе [запрос] – видео на YouTube",
+        "youtube – открыть YouTube",
+        "погода – погода",
+        "переводчик – открыть переводчик",
+        "дипси – открыть DeepSeek",
+        "игры яндекс – открыть Яндекс Игры",
+    ],
+    "Игры": [
+        "камень ножницы бумага – запустить игру",
+        "виселица – запустить игру",
+        "викторина – запустить игру",
+        "квест – запустить игру",
+        "крестики-нолики – запустить игру",
+        "угадай число – запустить игру",
+    ],
+    "Система": [
+        "открой [приложение] – открыть программу",
+        "закрой [приложение] – закрыть программу",
+        "открой проводник – открыть файловый менеджер",
+        "открой настройки – открыть настройки Windows",
+        "сверни окно – свернуть окно",
+        "закрой окно – закрыть окно",
+        "браузер – открыть браузер",
+        "вс код – открыть Visual Studio Code",
+    ],
+    "Мышь": [
+        "мышь вверх – курсор вверх",
+        "мышь вниз – курсор вниз",
+        "мышь влево – курсор влево",
+        "мышь вправо – курсор вправо",
+        "левый клик – клик ЛКМ",
+        "правый клик – клик ПКМ",
+        "скролл вверх – прокрутить вверх",
+        "скролл вниз – прокрутить вниз",
+    ],
+    "Клавиатура": [
+        "напечатай [текст] – напечатать",
+        "нажми клавишу [клавиша] – нажать",
+    ],
+    "Музыка": [
+        "музыка [название] – поиск в Яндекс.Музыке",
+        "моя волна – включить плейлист",
+        "дальше – следующий трек",
+        "пауза – пауза",
+        "предыдущий – предыдущий трек",
+        "лайк – добавить в избранное",
+        "дизлайк – убрать из рекомендаций",
+    ],
+    "Громкость": [
+        "громче – увеличить",
+        "тише – уменьшить",
+        "громкость [0-100] – установить",
+    ],
+    "Информация": [
+        "время – текущее время",
+        "дата – сегодняшняя дата",
+        "батарея – состояние батареи",
+    ],
+    "Управление ПК": [
+        "выключи компьютер – выключение через 10 сек",
+        "перезагрузка – перезагрузка",
+        "спящий режим – спящий режим",
+        "заблокируй компьютер – блокировка",
+    ],
+    "Учёба": [
+        "дз – домашнее задание",
+        "оценки – оценки",
+        "расписание – расписание на завтра",
+    ],
+    "Умный дом": [
+        "включи свет – включить светильник",
+        "выключи свет – выключить светильник",
+        "яркость [0-100] – установить яркость",
+        "цветовая температура [K] – установить",
+        "статус лампы – узнать состояние",
+        "список устройств – показать устройства",
+    ],
+    "Специальные": [
+        "переведи на английский [текст] – перевод",
+        "переведи на русский [текст] – перевод",
+        "нарисуй [запрос] – поиск картинок",
+        "скриншот – сделать скриншот экрана",
+        "селфи – сделать снимок с камеры",
+        "таймер [минуты] – запустить таймер",
+        "телефон – позвонить",
+        "bluetooth – переключить Bluetooth",
+        "хаос – запустить хаос",
+        "стоп хаос – остановить хаос",
+        "ухожу – выключить свет и ПК",
+    ],
+}
+
+FLAT_COMMANDS = []
+for _cat, _cmds in COMMAND_CATEGORIES.items():
+    for _cmd in _cmds:
+        FLAT_COMMANDS.append(_cmd)

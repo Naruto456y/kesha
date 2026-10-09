@@ -1,0 +1,367 @@
+// ====== Проверка пароля и загрузка истории ======
+const PASSWORD = localStorage.getItem('kesha_password');
+if (!PASSWORD) {
+    window.location.href = '/';
+}
+
+let chatHistory = JSON.parse(localStorage.getItem('chatHistory')) || [];
+let streamActive = false;
+let lastCommand = '';
+
+// ====== Элементы ======
+const messagesContainer = document.getElementById('chatMessages');
+const commandInput = document.getElementById('commandInput');
+const sendBtn = document.getElementById('sendBtn');
+const fileInput = document.getElementById('fileInput');
+
+// ====== Добавление сообщения с сохранением ======
+function addMessage(text, sender, imageUrl = null) {
+    const div = document.createElement('div');
+    div.className = `message ${sender}`;
+    if (imageUrl) {
+        div.innerHTML = text + '<br><img src="' + imageUrl + '" alt="скриншот" style="max-width:100%;border-radius:10px;margin-top:5px;">';
+    } else {
+        div.textContent = text;
+    }
+    messagesContainer.appendChild(div);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    chatHistory.push({ text, sender, imageUrl, time: Date.now() });
+    if (chatHistory.length > 500) chatHistory.shift();
+    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+}
+
+// ====== Загрузка истории при старте ======
+function loadHistory() {
+    chatHistory.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = `message ${msg.sender}`;
+        if (msg.imageUrl) {
+            div.innerHTML = msg.text + '<br><img src="' + msg.imageUrl + '" alt="скриншот" style="max-width:100%;border-radius:10px;margin-top:5px;">';
+        } else {
+            div.textContent = msg.text;
+        }
+        messagesContainer.appendChild(div);
+    });
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// ====== Очистка истории ======
+function clearHistory() {
+    if (confirm('Удалить всю историю чата?')) {
+        chatHistory = [];
+        localStorage.removeItem('chatHistory');
+        messagesContainer.innerHTML = '';
+        addMessage('🗑 История чата очищена', 'system');
+    }
+}
+
+// ====== Отправка команды ======
+async function sendCommand(text) {
+    const commandText = text || commandInput.value.trim();
+    if (!commandText) return;
+    if (!text) commandInput.value = '';
+    lastCommand = commandText;
+    addMessage(commandText, 'user');
+    sendBtn.disabled = true;
+    try {
+        const response = await fetch('/api/command', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Password': PASSWORD
+            },
+            body: JSON.stringify({ command: commandText })
+        });
+        if (response.status === 401) {
+            localStorage.removeItem('kesha_password');
+            window.location.href = '/';
+            return;
+        }
+        const data = await response.json();
+        if (data.image_url) {
+            addMessage(data.result || '✅ Скриншот', 'bot', data.image_url);
+        } else {
+            addMessage(data.result || '✅ Выполнено', 'bot');
+        }
+        if (commandText.toLowerCase().includes('трансляция')) {
+            toggleStream(true);
+        }
+    } catch (error) {
+        addMessage('❌ Ошибка соединения с сервером', 'bot');
+    } finally {
+        sendBtn.disabled = false;
+        if (!text) {
+            // Если команда из поля ввода – возвращаем фокус
+            commandInput.focus();
+        } else {
+            // Если команда из кнопки – убираем фокус, чтобы клавиатура не появлялась
+            commandInput.blur();
+        }
+    }
+}
+
+// ====== Повтор последней команды ======
+function repeatLastCommand() {
+    if (lastCommand) {
+        sendCommand(lastCommand);
+    } else {
+        addMessage('⚠️ Нет предыдущей команды', 'system');
+    }
+}
+
+// ====== Кнопки управления (pointerdown для сенсорных устройств) ======
+document.querySelectorAll('.ctrl-btn, .j-btn').forEach(btn => {
+    btn.addEventListener('pointerdown', function(e) {
+        e.preventDefault();
+        // Снимаем фокус с поля ввода, чтобы клавиатура не появлялась
+        commandInput.blur();
+        let cmd = this.dataset.cmd;
+        if (this.dataset.scroll) {
+            cmd = this.dataset.scroll === '1' ? 'скролл вверх' : 'скролл вниз';
+        }
+        sendCommand(cmd);
+    });
+});
+
+// ====== Трансляция ======
+function toggleStream(forceStart = false) {
+    const container = document.getElementById('streamContainer');
+    const img = document.getElementById('streamImage');
+    if (streamActive && !forceStart) {
+        img.src = '';
+        container.style.display = 'none';
+        streamActive = false;
+        addMessage('Трансляция остановлена', 'system');
+        return;
+    }
+    img.src = '/stream?password=' + PASSWORD + '&_=' + Date.now();
+    container.style.display = 'block';
+    streamActive = true;
+    addMessage('📺 Трансляция запущена!', 'system');
+}
+
+function toggleFullscreen() {
+    const img = document.getElementById('streamImage');
+    if (img.requestFullscreen) {
+        img.requestFullscreen();
+    } else if (img.webkitRequestFullscreen) {
+        img.webkitRequestFullscreen();
+    }
+}
+
+// ====== Напечатай текст ======
+function sendTypeText() {
+    const input = document.getElementById('typeTextInput');
+    const text = input.value.trim();
+    if (!text) return;
+    // Убираем фокус с поля ввода команд, чтобы не мешать
+    commandInput.blur();
+    sendCommand('напечатай ' + text);
+    input.value = '';
+}
+
+// ====== Нажми клавишу ======
+function sendKey() {
+    const input = document.getElementById('keyInput');
+    const key = input.value.trim();
+    if (!key) return;
+    commandInput.blur();
+    sendCommand('нажми клавишу ' + key);
+    input.value = '';
+}
+
+// ====== Сенсорный джойстик ======
+const joystick = document.getElementById('joystick');
+const thumb = document.getElementById('thumb');
+
+let joystickActive = false;
+let joystickInterval = null;
+let joystickDirection = '';
+let joystickForce = 0;
+
+function getJoystickDirection(dx, dy) {
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (absX < 0.1 && absY < 0.1) return '';
+
+    if (absX > absY) {
+        return dx > 0 ? 'вправо' : 'влево';
+    } else {
+        return dy > 0 ? 'вниз' : 'вверх';
+    }
+}
+
+function updateJoystick(clientX, clientY) {
+    const rect = joystick.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    let dx = clientX - centerX;
+    let dy = clientY - centerY;
+    const maxDist = rect.width / 2 - thumb.offsetWidth / 2;
+    const distance = Math.sqrt(dx*dx + dy*dy);
+    let clampedDist = Math.min(distance, maxDist);
+    if (distance > 0) {
+        dx = dx / distance * clampedDist;
+        dy = dy / distance * clampedDist;
+    } else {
+        dx = 0;
+        dy = 0;
+    }
+
+    thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    joystickForce = clampedDist / maxDist;
+    joystickDirection = getJoystickDirection(dx, dy);
+}
+
+function startJoystick(e) {
+    e.preventDefault();
+    // Убираем фокус с поля ввода
+    commandInput.blur();
+    joystickActive = true;
+    const point = e.touches ? e.touches[0] : e;
+    updateJoystick(point.clientX, point.clientY);
+
+    if (joystickInterval) clearInterval(joystickInterval);
+    joystickInterval = setInterval(() => {
+        if (joystickDirection && joystickForce > 0.1) {
+            const step = Math.max(10, Math.round(joystickForce * 50));
+            sendCommand(joystickDirection + ' ' + step);
+        }
+    }, 100);
+}
+
+function moveJoystick(e) {
+    e.preventDefault();
+    if (!joystickActive) return;
+    const point = e.touches ? e.touches[0] : e;
+    updateJoystick(point.clientX, point.clientY);
+}
+
+function stopJoystick(e) {
+    e.preventDefault();
+    if (!joystickActive) return;
+    joystickActive = false;
+    thumb.style.transform = `translate(-50%, -50%)`;
+    joystickDirection = '';
+    joystickForce = 0;
+    if (joystickInterval) {
+        clearInterval(joystickInterval);
+        joystickInterval = null;
+    }
+}
+
+joystick.addEventListener('mousedown', startJoystick);
+document.addEventListener('mousemove', moveJoystick);
+document.addEventListener('mouseup', stopJoystick);
+
+joystick.addEventListener('touchstart', startJoystick, { passive: false });
+document.addEventListener('touchmove', moveJoystick, { passive: false });
+document.addEventListener('touchend', stopJoystick, { passive: false });
+
+// ====== Кнопка ЛК (pointerdown) ======
+document.getElementById('leftClickBtn').addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    commandInput.blur();
+    sendCommand('левый клик');
+});
+
+// ====== Кнопка "Повтор" (pointerdown) ======
+document.getElementById('repeatBtn').addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    commandInput.blur();
+    repeatLastCommand();
+});
+
+// ====== Загрузка быстрых кнопок ======
+async function loadQuickButtons() {
+    try {
+        const response = await fetch('/api/commands', {
+            headers: { 'X-Password': PASSWORD }
+        });
+        const data = await response.json();
+        const container = document.getElementById('quickCommands');
+        const sample = data.commands.slice(0, 8);
+        sample.forEach(cmd => {
+            const btn = document.createElement('button');
+            const parts = cmd.split('–');
+            btn.textContent = parts[0] ? parts[0].trim() : cmd;
+            btn.title = cmd;
+            btn.addEventListener('pointerdown', function(e) {
+                e.preventDefault();
+                commandInput.value = parts[0] ? parts[0].trim() : cmd;
+                commandInput.focus(); // при вставке в поле даём фокус для удобства
+            });
+            container.appendChild(btn);
+        });
+        const helpBtn = document.createElement('button');
+        helpBtn.textContent = '❓ Помощь';
+        helpBtn.addEventListener('pointerdown', async function(e) {
+            e.preventDefault();
+            const resp = await fetch('/api/commands', {
+                headers: { 'X-Password': PASSWORD }
+            });
+            const d = await resp.json();
+            let msg = '📋 Доступные команды (категории):\n\n';
+            for (const [cat, cmds] of Object.entries(d.categories)) {
+                msg += `🔹 ${cat}\n`;
+                for (const c of cmds) {
+                    msg += `   ${c}\n`;
+                }
+                msg += '\n';
+            }
+            addMessage(msg, 'bot');
+        });
+        container.appendChild(helpBtn);
+    } catch (e) {
+        console.error('Ошибка загрузки команд', e);
+    }
+}
+
+// ====== Загрузка файлов ======
+fileInput.addEventListener('change', async function() {
+    if (this.files.length === 0) return;
+    const file = this.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    addMessage(`📎 Загружаю файл: ${file.name}...`, 'user');
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'X-Password': PASSWORD },
+            body: formData
+        });
+        const data = await response.json();
+        if (data.file_url) {
+            addMessage(`✅ Файл загружен: ${data.file_url}`, 'bot');
+        } else {
+            addMessage('❌ Ошибка загрузки файла', 'bot');
+        }
+    } catch (e) {
+        addMessage('❌ Ошибка при загрузке', 'bot');
+    }
+    this.value = '';
+});
+
+// ====== Обработка Enter ======
+commandInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendCommand();
+});
+document.getElementById('typeTextInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendTypeText();
+});
+document.getElementById('keyInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendKey();
+});
+
+// ====== Выход ======
+function logout() {
+    localStorage.removeItem('kesha_password');
+    localStorage.removeItem('chatHistory');
+    window.location.href = '/';
+}
+
+// ====== Инициализация ======
+loadHistory();
+loadQuickButtons();

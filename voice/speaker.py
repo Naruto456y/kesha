@@ -7,7 +7,10 @@ from config import TTS_LANG, TTS_SLOW
 
 class Speaker:
     def __init__(self):
-        pygame.mixer.init()
+        try:
+            pygame.mixer.init()
+        except Exception as e:
+            print("[speaker] pygame init failed:", e)
         self.is_speaking = False
         self.mic_blocked_until = 0.0
         self._lock = threading.Lock()
