@@ -14,12 +14,23 @@ const commandInput = document.getElementById('commandInput');
 const sendBtn = document.getElementById('sendBtn');
 const fileInput = document.getElementById('fileInput');
 
+// ====== Картинка в сообщении (textContent + img, без innerHTML) ======
+function appendImage(div, text, imageUrl) {
+    div.appendChild(document.createTextNode(text));
+    div.appendChild(document.createElement('br'));
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = 'скриншот';
+    img.style.cssText = 'max-width:100%;border-radius:10px;margin-top:5px;';
+    div.appendChild(img);
+}
+
 // ====== Добавление сообщения с сохранением ======
 function addMessage(text, sender, imageUrl = null) {
     const div = document.createElement('div');
     div.className = `message ${sender}`;
     if (imageUrl) {
-        div.innerHTML = text + '<br><img src="' + imageUrl + '" alt="скриншот" style="max-width:100%;border-radius:10px;margin-top:5px;">';
+        appendImage(div, text, imageUrl);
     } else {
         div.textContent = text;
     }
@@ -37,7 +48,7 @@ function loadHistory() {
         const div = document.createElement('div');
         div.className = `message ${msg.sender}`;
         if (msg.imageUrl) {
-            div.innerHTML = msg.text + '<br><img src="' + msg.imageUrl + '" alt="скриншот" style="max-width:100%;border-radius:10px;margin-top:5px;">';
+            appendImage(div, msg.text, msg.imageUrl);
         } else {
             div.textContent = msg.text;
         }
@@ -101,6 +112,25 @@ async function sendCommand(text) {
     }
 }
 
+// ====== Тихая отправка (джойстик): без записи в чат и без наложения запросов ======
+let quietBusy = false;
+async function sendQuiet(commandText) {
+    if (quietBusy) return;
+    quietBusy = true;
+    try {
+        const r = await fetch('/api/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Password': PASSWORD },
+            body: JSON.stringify({ command: commandText })
+        });
+        if (r.status === 401) {
+            localStorage.removeItem('kesha_password');
+            window.location.href = '/';
+        }
+    } catch (e) { /* пропускаем кадр */ }
+    finally { quietBusy = false; }
+}
+
 // ====== Повтор последней команды ======
 function repeatLastCommand() {
     if (lastCommand) {
@@ -135,7 +165,7 @@ function toggleStream(forceStart = false) {
         addMessage('Трансляция остановлена', 'system');
         return;
     }
-    img.src = '/stream?password=' + PASSWORD + '&_=' + Date.now();
+    img.src = '/stream?_=' + Date.now();   // авторизация — по куке из /login
     container.style.display = 'block';
     streamActive = true;
     addMessage('📺 Трансляция запущена!', 'system');
@@ -186,9 +216,9 @@ function getJoystickDirection(dx, dy) {
     if (absX < 0.1 && absY < 0.1) return '';
 
     if (absX > absY) {
-        return dx > 0 ? 'вправо' : 'влево';
+        return dx > 0 ? 'мышь вправо' : 'мышь влево';
     } else {
-        return dy > 0 ? 'вниз' : 'вверх';
+        return dy > 0 ? 'мышь вниз' : 'мышь вверх';
     }
 }
 
@@ -227,7 +257,7 @@ function startJoystick(e) {
     joystickInterval = setInterval(() => {
         if (joystickDirection && joystickForce > 0.1) {
             const step = Math.max(10, Math.round(joystickForce * 50));
-            sendCommand(joystickDirection + ' ' + step);
+            sendQuiet(joystickDirection + ' ' + step);
         }
     }, 100);
 }
@@ -284,31 +314,31 @@ async function loadQuickButtons() {
         const container = document.getElementById('quickCommands');
         const sample = data.commands.slice(0, 8);
         sample.forEach(cmd => {
+            const name = (cmd.patterns && cmd.patterns[0]) || cmd.description || '';
+            if (!name) return;
             const btn = document.createElement('button');
-            const parts = cmd.split('–');
-            btn.textContent = parts[0] ? parts[0].trim() : cmd;
-            btn.title = cmd;
+            btn.textContent = name;
+            btn.title = cmd.description || name;
             btn.addEventListener('pointerdown', function(e) {
                 e.preventDefault();
-                commandInput.value = parts[0] ? parts[0].trim() : cmd;
+                commandInput.value = name;
                 commandInput.focus(); // при вставке в поле даём фокус для удобства
             });
             container.appendChild(btn);
         });
         const helpBtn = document.createElement('button');
         helpBtn.textContent = '❓ Помощь';
-        helpBtn.addEventListener('pointerdown', async function(e) {
+        helpBtn.addEventListener('pointerdown', function(e) {
             e.preventDefault();
-            const resp = await fetch('/api/commands', {
-                headers: { 'X-Password': PASSWORD }
-            });
-            const d = await resp.json();
+            const cats = {};
+            for (const c of data.commands) {
+                const key = c.category || 'Общее';
+                (cats[key] = cats[key] || []).push((c.patterns && c.patterns[0]) || c.description);
+            }
             let msg = '📋 Доступные команды (категории):\n\n';
-            for (const [cat, cmds] of Object.entries(d.categories)) {
+            for (const [cat, names] of Object.entries(cats)) {
                 msg += `🔹 ${cat}\n`;
-                for (const c of cmds) {
-                    msg += `   ${c}\n`;
-                }
+                for (const n of names) msg += `   ${n}\n`;
                 msg += '\n';
             }
             addMessage(msg, 'bot');
@@ -364,4 +394,9 @@ function logout() {
 
 // ====== Инициализация ======
 loadHistory();
-loadQuickButtons();
+// кука сессии нужна для <img> (скриншоты, трансляция); обновляем её при каждом открытии чата
+fetch('/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: PASSWORD })
+}).finally(loadQuickButtons);

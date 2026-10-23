@@ -24,31 +24,3 @@ uploads/
 silero_v5_6_ru.pt
 
 data/
-
-# Бэкапы и временное
-*.bak
-*.broken
-.pytest_cache/
-voices_preview/
-.py
-kesha_compil/*.exe
-.claude/
-CLAUDE.md
-alice_skill/ngrok.txt
-
-# Секреты (никогда не коммитить)
-.env
-.env.*
-!.env.example
-*.key
-*.pem
-*.p12
-*.pfx
-*.session
-*.session-journal
-*token*.txt
-*secret*
-*credentials*.json
-client_secret*.json
-ngrok.txt
-data/telegram_users.json

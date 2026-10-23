@@ -21,4 +21,13 @@ pycaw
 comtypes
 PyQt6
 PyQt6-WebEngine
-pyinstaller
+
+# голос
+onnx-asr[cpu,hub]
+sounddevice
+numpy
+pvporcupine
+webrtcvad-wheels
+
+# pytest — тесты
+pytest

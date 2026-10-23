@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Вход в Кеша</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <h1>🧸 Кеша</h1>
+        <p>Введите пароль для доступа к управлению компьютером</p>
+        <input type="password" id="passwordInput" placeholder="Пароль" autofocus>
+        <button onclick="login()">Войти</button>
+        <div id="errorMessage" class="error">Неверный пароль. Попробуйте снова.</div>
+        <div class="footer">Защищено паролем</div>
+    </div>
+    <script>
+        async function login() {
+            const password = document.getElementById('passwordInput').value.trim();
+            if (!password) return;
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: password })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    localStorage.setItem('kesha_password', password);
+                    window.location.href = '/chat';
+                } else {
+                    document.getElementById('errorMessage').classList.add('show');
+                }
+            } else {
+                document.getElementById('errorMessage').classList.add('show');
+            }
+        }
+        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>

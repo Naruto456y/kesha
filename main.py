@@ -132,7 +132,12 @@ def main():
 
     try:
         if args.desktop or run_all:
-            run_desktop()
+            try:
+                run_desktop()
+            except ImportError as e:
+                print(f"[main] Desktop недоступен ({e}) — работаю без GUI", flush=True)
+                while True:
+                    time.sleep(0.5)
         else:
             while True:
                 time.sleep(0.5)

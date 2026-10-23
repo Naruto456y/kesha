@@ -1,0 +1,2 @@
+# сборка Kesha.exe
+pyinstaller

@@ -5,12 +5,28 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters
 
 from core import handle_command
-from config import TELEGRAM_TOKEN, ICON_PATH
+from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_IDS, ICON_PATH
 
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)   # иначе в лог попадает URL с токеном
 log = logging.getLogger(__name__)
 
 
+def allowed(func):
+    """Пускает только пользователей из TELEGRAM_ALLOWED_IDS; остальным показывает их id."""
+    async def wrapper(u: Update, c: ContextTypes.DEFAULT_TYPE):
+        user = u.effective_user
+        uid = str(user.id) if user else ""
+        if uid not in TELEGRAM_ALLOWED_IDS:
+            log.warning("Отказано: user_id=%s", uid)
+            if u.message:
+                await u.message.reply_text(f"Доступ запрещён. Ваш id: {uid}")
+            return
+        return await func(u, c)
+    return wrapper
+
+
+@allowed
 async def cmd_start(u: Update, c: ContextTypes.DEFAULT_TYPE):
     from core import registry
     cats = {}
@@ -29,6 +45,7 @@ async def cmd_start(u: Update, c: ContextTypes.DEFAULT_TYPE):
         await u.message.reply_text(txt)
 
 
+@allowed
 async def cmd_say(u: Update, c: ContextTypes.DEFAULT_TYPE):
     text = u.message.text.replace("/say", "").strip()
     if not text:
@@ -42,11 +59,12 @@ async def cmd_say(u: Update, c: ContextTypes.DEFAULT_TYPE):
         await u.message.reply_text("Ошибка TTS: " + str(e))
 
 
+@allowed
 async def on_message(u: Update, c: ContextTypes.DEFAULT_TYPE):
     text = (u.message.text or "").strip()
     if not text:
         return
-    response = handle_command(text, source="telegram")
+    response = await asyncio.to_thread(handle_command, text, "telegram")
     await u.message.reply_text(response or "...")
 
 
@@ -57,6 +75,9 @@ def start_bot():
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
+    if not TELEGRAM_ALLOWED_IDS:
+        log.warning("TELEGRAM_ALLOWED_IDS пуст — бот никому не отвечает. "
+                    "Напишите боту, он покажет ваш id, и впишите его в .env")
     log.info("Запуск Telegram-бота Кеша...")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))

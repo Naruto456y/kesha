@@ -6,6 +6,10 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
+
 # ============================================================
 #  БАЗОВЫЕ ПУТИ
 # ============================================================
@@ -13,9 +17,11 @@ BASE_DIR = Path(__file__).parent
 MEDIA_DIR = BASE_DIR / "Media"
 UPLOAD_DIR = BASE_DIR / "uploads"
 LOGS_DIR = BASE_DIR / "logs"
+DATA_DIR = BASE_DIR / "data"
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
 # ============================================================
 #  ПУТИ К ИГРАМ (автопоиск: Media/games/ или Media/)
@@ -235,10 +241,19 @@ SEARCH_RESPONSES = [
 ]
 
 # ============================================================
-#  ТОКЕНЫ И ПАРОЛИ
+#  ТОКЕНЫ И ПАРОЛИ (значения лежат в .env)
 # ============================================================
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_TOKEN"
-WEB_PASSWORD   = "CHANGE_ME"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+WEB_PASSWORD   = os.getenv("WEB_PASSWORD", "")
+
+
+def _id_set(name):
+    return {x.strip() for x in os.getenv(name, "").split(",") if x.strip()}
+
+
+# Кому можно управлять ПК. Пусто = никому (доступ закрыт).
+TELEGRAM_ALLOWED_IDS = _id_set("TELEGRAM_ALLOWED_IDS")   # числовые user_id, через запятую
+ALICE_ALLOWED_IDS    = _id_set("ALICE_ALLOWED_IDS")      # user_id / application_id из лога навыка
 
 # ============================================================
 #  НАСТРОЙКИ ГОЛОСА
@@ -266,8 +281,25 @@ DESKTOP_TITLE  = "Голосовой помощник Кеша"
 # ============================================================
 #  ПОГОДА
 # ============================================================
-WEATHER_API_KEY = "YOUR_OPENWEATHER_KEY"
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
 WEATHER_CITY    = "Москва"
+
+# ============================================================
+#  ПОНИМАНИЕ ФРАЗ (волна 2)
+# ============================================================
+FUZZY_THRESHOLD = 0.84        # порог похожести (0..1) для нечёткого поиска
+FUZZY_THRESHOLD_LONG = 0.80   # порог для длинных паттернов (>= 12 символов)
+FUZZY_MIN_LEN = 5             # короче — паттерн не участвует в нечётком поиске
+
+SESSION_STEPS = 3             # сколько последних реплик помним
+SESSION_TTL = 300             # через сколько секунд контекст «протухает»
+
+AI_CACHE_FILE = DATA_DIR / "ai_cache.json"
+AI_CACHE_TTL  = 24 * 3600     # сколько живёт ответ GigaChat в кэше, сек
+AI_CACHE_MAX  = 500           # максимум записей в кэше
+AI_COMMANDS_MAX_WORDS = 8     # длиннее — это вопрос, список команд GigaChat не шлём
+
+UNKNOWN_LOG_FILE = LOGS_DIR / "kesha.log"
 
 # ============================================================
 #  ПРОЧЕЕ
