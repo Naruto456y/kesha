@@ -25,7 +25,7 @@
 - [voice/](voice/) — цикл `wake word → VAD → GigaAM → команда → TTS`.
 - [desktop/](desktop/), [website/](website/), [telegram_bot/](telegram_bot/), [alice_skill/](alice_skill/) — интерфейсы.
 - [kesha_compil/](kesha_compil/) — лаунчер и сборка в `Kesha.exe` (PyInstaller).
-- [tests/](tests/), [tests_wave1/](tests_wave1/) — тесты команд, ядра, голоса, GigaAM, VAD, Porcupine.
+- [tests/](tests/) — тесты команд, ядра, голоса, GigaAM, VAD, Porcupine.
 
 ---
 
@@ -61,7 +61,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Модель GigaAM скачивается в `models/gigaam/` — можно заранее: `python tests_wave1/download_gigaam.py`.
+Модель GigaAM скачивается в `models/gigaam/` — можно заранее: `python tests/manual/download_gigaam.py`.
 Для сборки `Kesha.exe`: `pip install -r requirements-dev.txt`.
 
 ### Секреты
@@ -203,7 +203,7 @@ python -m pytest tests
 
 Сухой прогон живых фраз (ничего не запускается — всё заглушено): `python tools/dry_run.py` — какая команда ловит каждую фразу из [tools/phrases.txt](tools/phrases.txt); `--only-unknown` — только те, что ушли бы в GigaChat.
 
-Тесты ядра и команд — в [tests/](tests/). В [tests_wave1/](tests_wave1/) — ручные проверки компонентов голоса (GigaAM, VAD, Porcupine): `python tests_wave1/test_vad.py` и т.п.
+Тесты ядра и команд — в [tests/](tests/). В [tests/manual/](tests/manual/) — ручные проверки компонентов голоса (GigaAM, VAD, Porcupine): `python tests/manual/test_vad.py` и т.п.
 
 ---
 
@@ -223,7 +223,7 @@ kesha/
 ├── alice_skill/
 ├── Media/             # игры, иконки, звук будильника
 ├── kesha_compil/      # лаунчер и сборка exe
-├── tests/  tests_wave1/
+├── tests/
 └── backups/           # старые копии (можно не коммитить)
 ```
 

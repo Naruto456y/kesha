@@ -1,3 +1,5 @@
+collect_ignore = ["manual"]  # ручные проверки моделей/микрофона, pytest их не трогает
+
 import pytest
 
 import ai_cache
