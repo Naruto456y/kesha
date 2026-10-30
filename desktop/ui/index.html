@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>Кеша</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="reactor.css">
 </head>
 <body>
 <div class="edge edge-top"    id="edge-app"></div>
@@ -26,61 +27,14 @@
   <main class="panel panel-center">
     <h1 class="main-title">Голосовой<br>помощник Кеша</h1>
     <div class="reactor" id="reactor">
-      <svg viewBox="0 0 400 400">
-        <defs>
-          <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#7FFFFF" stop-opacity="0.55"/>
-            <stop offset="55%" stop-color="#00E5FF" stop-opacity="0.25"/>
-            <stop offset="100%" stop-color="#00E5FF" stop-opacity="0"/>
-          </radialGradient>
-          <radialGradient id="coreGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#FFFFFF"/>
-            <stop offset="45%" stop-color="#DFFFFF"/>
-            <stop offset="80%" stop-color="#7FF5FF"/>
-            <stop offset="100%" stop-color="#00B8D4"/>
-          </radialGradient>
-          <radialGradient id="coreInner" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#FFFFFF"/>
-            <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
-          </radialGradient>
-          <radialGradient id="hexGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#FFFFFF"/>
-            <stop offset="60%" stop-color="#CFFFFF"/>
-            <stop offset="100%" stop-color="#00E5FF"/>
-          </radialGradient>
-          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-        <circle class="pulse-glow" cx="200" cy="200" r="195" fill="url(#glowGrad)"/>
-        <circle cx="200" cy="200" r="160" fill="#0A2A38" stroke="#0A3340" stroke-width="70"
-                stroke-dasharray="48 30" stroke-linecap="round" class="gear-rotate"/>
-        <circle cx="200" cy="200" r="160" fill="none" stroke="#00D5EE" stroke-width="3"
-                stroke-dasharray="48 30" stroke-linecap="round" opacity="0.7" class="gear-rotate"/>
-        <g class="gear-rotate-r">
-          <g class="hex-blink" transform="translate(200,40)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(313,87)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(360,200)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(313,313)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(200,360)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(87,313)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(40,200)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-          <g class="hex-blink" transform="translate(87,87)"><polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="url(#hexGrad)" filter="url(#softGlow)"/></g>
-        </g>
-        <circle cx="200" cy="200" r="115" fill="#0A2432" opacity="0.95"/>
-        <circle cx="200" cy="200" r="98" fill="none" stroke="#7FFFFF" stroke-width="5"
-                stroke-dasharray="1 36" stroke-linecap="round" class="gear-rotate-r" filter="url(#softGlow)"/>
-        <circle cx="200" cy="200" r="72" fill="none" stroke="#00E5FF" stroke-width="5" filter="url(#softGlow)"/>
-        <circle cx="200" cy="200" r="62" fill="none" stroke="#BFFFFF" stroke-width="1.5" opacity="0.6"/>
-        <circle class="pulse-core" cx="200" cy="200" r="55" fill="url(#coreGrad)" filter="url(#softGlow)"/>
-        <circle cx="185" cy="185" r="18" fill="url(#coreInner)" opacity="0.9"/>
-      </svg>
     </div>
     <div class="controls">
-      <button class="ctrl-btn" id="btnListen" onclick="toggleListening()">СЛУШАТЬ</button>
+      <button class="ctrl-btn" id="btnListen" onclick="toggleListening()" title="Ctrl+Space">СЛУШАТЬ</button>
+      <button class="ctrl-btn" id="btnSilent" onclick="toggleSilent()" title="Тихий режим: только текст">ГОЛОС ВКЛ</button>
+      <button class="ctrl-btn" id="btnTheme" onclick="toggleTheme()" title="Тема оформления">СВЕТЛАЯ</button>
+      <button class="ctrl-btn" id="btnReactor" onclick="openReactorEditor()" title="Цвета и анимации реактора">РЕАКТОР</button>
     </div>
-    <div class="status-bar" id="statusBar">IDLE</div>
+    <div class="status-bar" id="statusBar">ЖДУ</div>
   </main>
 
   <aside class="panel panel-right">
@@ -94,6 +48,8 @@
 </div>
 
 <script src="qwebchannel.js"></script>
+<script src="reactor_config.js"></script>
+<script src="reactor.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

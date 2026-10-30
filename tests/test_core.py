@@ -3,7 +3,9 @@ from core import CommandRegistry, handle_command, remove_wake_words, subscribe, 
 
 
 def test_remove_wake_words():
-    assert remove_wake_words("Кеша, открой браузер") == ", открой браузер"
+    assert remove_wake_words("Кеша, открой браузер") == "открой браузер"
+    assert remove_wake_words("Кеша, запиши: молоко!") == "запиши: молоко!"
+    assert remove_wake_words("открой браузер, кеша") == "открой браузер"
 
 
 def test_registry_sorts_by_priority():
@@ -35,3 +37,15 @@ def test_event_bus(monkeypatch):
     finally:
         unsubscribe(cb)
     assert seen == [("test", "что-то непонятное", "ответ")]
+
+
+def test_every_registered_command_takes_one_text_argument():
+    """Ловит ошибку, когда декоратор случайно оказался над хелпером."""
+    import inspect
+    import commands  # noqa: F401
+    from core import registry
+    for c in registry.commands:
+        assert not c["name"].startswith("_"), c["name"]
+        params = [p for p in inspect.signature(c["func"]).parameters.values()
+                  if p.default is inspect.Parameter.empty]
+        assert len(params) == 1, c["name"]

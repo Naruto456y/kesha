@@ -26,7 +26,8 @@ def alice_skill():
     try:
         data = request.json
         ids = _session_ids(data)
-        if not ALICE_ALLOWED_IDS.intersection(ids):
+        # белый список — только если задан ALICE_ALLOWED_IDS в .env; по умолчанию пускаем всех
+        if ALICE_ALLOWED_IDS and not ALICE_ALLOWED_IDS.intersection(ids):
             print("[alice] отказано, ids=%s (добавьте нужный в ALICE_ALLOWED_IDS)" % ids)
             return jsonify({
                 "response": {"text": "Доступ запрещён.", "end_session": True},

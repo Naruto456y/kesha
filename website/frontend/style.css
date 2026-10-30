@@ -350,3 +350,16 @@ body {
     .text-controls input { font-size: 12px; }
     .text-controls button { font-size: 12px; padding: 4px 10px; }
 }
+/* Состояние Кеши (WebSocket) */
+.k-status { display:inline-flex; align-items:center; gap:6px; padding:4px 12px;
+    border-radius:20px; background:rgba(0,0,0,0.25); color:#fff; font-size:13px; font-weight:600; }
+.k-status .k-dot { width:10px; height:10px; border-radius:50%; background:#999;
+    box-shadow:0 0 6px currentColor; transition:background 0.3s; }
+.k-status[data-state="IDLE"] .k-dot { background:#00E5FF; }
+.k-status[data-state="WAKE"] .k-dot { background:#FFFFFF; }
+.k-status[data-state="LISTENING"] .k-dot { background:#00FFAA; animation:kBlink 0.8s infinite; }
+.k-status[data-state="THINKING"] .k-dot { background:#FFC400; animation:kBlink 0.5s infinite; }
+.k-status[data-state="SPEAKING"] .k-dot { background:#B45CFF; animation:kBlink 0.6s infinite; }
+.k-status[data-state="ERROR"] .k-dot { background:#FF3355; }
+.k-status[data-state="OFFLINE"] .k-dot { background:#777; }
+@keyframes kBlink { 50% { opacity:0.35; } }

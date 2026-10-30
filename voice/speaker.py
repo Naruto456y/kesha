@@ -1,8 +1,14 @@
-"""Озвучка ответов Кеши (gTTS + pygame). Длительность mp3 — точная, через mutagen."""
-import os, re, time, tempfile, threading
+"""
+Озвучка ответов Кеши (pygame). Движок выбирается настройкой «voice»
+(google / female / male / robot), язык — настройкой «language».
+Тихий режим (settings «silent») — не говорим вслух, ответ остаётся текстом.
+Длительность mp3 — точная, через mutagen; wav — по заголовку.
+"""
+import os, re, time, threading
 import pygame
-from gtts import gTTS
-from config import TTS_LANG, TTS_SLOW
+
+import settings
+from . import tts_engines
 
 try:
     from mutagen.mp3 import MP3
@@ -14,15 +20,17 @@ except Exception as _e:
 _EMOJI_RE = re.compile("[🀀-🫿☀-➿⬀-⯿️‍]+")
 
 TAIL_SEC = 0.4        # запас на эхо после конца речи
-GEN_GUARD_SEC = 20.0  # пока gTTS генерирует mp3, микрофон закрыт
+GEN_GUARD_SEC = 20.0  # пока движок генерирует аудио, микрофон закрыт
 
 
-def _mp3_length(path, text):
-    if MP3 is not None:
-        try:
+def _audio_length(path, text):
+    try:
+        if path.endswith(".wav"):
+            return tts_engines.wav_length(path)
+        if MP3 is not None:
             return float(MP3(path).info.length)
-        except Exception as e:
-            print("[speaker] mutagen:", e)
+    except Exception as e:
+        print("[speaker] длительность:", e)
     return len(text) * 0.05 + 1.0   # запасная формула
 
 
@@ -33,30 +41,58 @@ def _remove(path):
         pass
 
 
+def init_mixer():
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
+
+
 class Speaker:
     def __init__(self):
         try:
-            pygame.mixer.init()
+            init_mixer()
         except Exception as e:
             print("[speaker] pygame init failed:", e)
         self.is_speaking = False
         self.mic_blocked_until = 0.0
+        self.last_engine = None
         self._lock = threading.Lock()
         self._gen = 0
+        self._on_setting("voice", settings.get("voice"))
+        settings.subscribe(self._on_setting)
 
-    def say(self, text):
+    def _on_setting(self, key, value):
+        if key == "voice" and value in ("female", "male", "robot"):
+            tts_engines.preload_silero()
+
+    def _synthesize(self, text):
+        """-> путь к файлу. Перебираем движки, пока какой-нибудь не сработает."""
+        order = tts_engines.engine_order(settings.get("voice"), settings.get("language"))
+        errors = []
+        for name, synth in order:
+            try:
+                path = synth(text)
+                self.last_engine = name
+                return path
+            except Exception as e:
+                errors.append(f"{name}: {e}")
+        raise RuntimeError("ни один движок не сработал — " + "; ".join(errors))
+
+    def say(self, text, force=False):
+        """force=True — говорить даже в тихом режиме (например, /say из Telegram)."""
         text = _EMOJI_RE.sub("", text or "").strip()
         if not text:
+            return
+        if settings.get("silent") and not force:
             return
         with self._lock:
             self._gen += 1
             gen = self._gen
             self.is_speaking = True
             self.mic_blocked_until = time.time() + GEN_GUARD_SEC
-        fn = os.path.join(tempfile.gettempdir(), "kesha_%d.mp3" % int(time.time() * 1000))
+        fn = None
         try:
-            gTTS(text=text, lang=TTS_LANG, slow=TTS_SLOW).save(fn)
-            length = _mp3_length(fn, text)
+            fn = self._synthesize(text)
+            length = _audio_length(fn, text)
             with self._lock:
                 if gen != self._gen:   # пока генерировали, пришла более новая фраза
                     _remove(fn)
@@ -72,7 +108,8 @@ class Speaker:
             threading.Thread(target=self._cleanup, args=(fn, gen), daemon=True).start()
         except Exception as e:
             print("[speaker]", e)
-            _remove(fn)
+            if fn:
+                _remove(fn)
             with self._lock:
                 if gen == self._gen:
                     self.is_speaking = False
@@ -93,6 +130,11 @@ class Speaker:
             except Exception:
                 pass
         _remove(fn)
+
+    def block_mic(self, seconds):
+        """Закрыть микрофон на seconds (пока играет звуковой эффект)."""
+        with self._lock:
+            self.mic_blocked_until = max(self.mic_blocked_until, time.time() + seconds)
 
     def is_mic_blocked(self):
         with self._lock:

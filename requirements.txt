@@ -27,7 +27,22 @@ onnx-asr[cpu,hub]
 sounddevice
 numpy
 pvporcupine
+openwakeword          # wake word «Кеша»: python tools/train_oww.py all
+scikit-learn          # нужен openwakeword
 webrtcvad-wheels
 
 # pytest — тесты
 pytest
+
+# волны 3–5
+plyer                   # уведомления Windows
+pyttsx3                 # офлайн-голос Windows (запасной)
+icalendar               # календарь: ICS Google/Яндекс
+recurring-ical-events   # повторяющиеся события календаря
+mutagen                 # точная длительность mp3
+# torch                 # для офлайн-голосов Silero (female/male/robot); без него — gTTS/SAPI
+torchaudio              # свой детектор слова «Кеша» (tools/train_wake.py)
+
+# распознавание речи Aqua
+openai
+truststore              # доверять сертификатам Windows (антивирус с перехватом TLS)

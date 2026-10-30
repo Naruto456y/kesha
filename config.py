@@ -187,6 +187,14 @@ APP_PATHS = {
     "kesha":              r"C:\Users\Yusuf\Desktop\KeshaAssistant.exe",
 }
 
+# Встроенные программы Windows (их нет ни на рабочем столе, ни в списке AppOpener)
+BUILTIN_APPS = {
+    "калькулятор": "calc.exe", "calculator": "calc.exe",
+    "диспетчер задач": "taskmgr.exe", "панель управления": "control.exe",
+    "ножницы": "snippingtool.exe", "экранная клавиатура": "osk.exe",
+    "экранную клавиатуру": "osk.exe", "лупа": "magnify.exe", "лупу": "magnify.exe",
+}
+
 # ============================================================
 #  ПУТИ К ВСПОМОГАТЕЛЬНЫМ ФАЙЛАМ
 # ============================================================
@@ -200,6 +208,9 @@ ALARM_SOUND = str(MEDIA_DIR / "basic-alarm-ringtone.mp3")
 #  WAKE-WORDS
 # ============================================================
 WAKE_WORDS = ["кеша", "кеш", "гоша", "чебурек", "кэш"]
+# Как GigaAM иногда слышит «Кеша». Считаются словом-активатором, только если стоят
+# в начале фразы (иначе «каша на завтрак» будила бы Кешу).
+WAKE_ALIASES = ["каша", "кеши", "кеше", "кешу", "геша", "киша", "беша", "кэша", "кеща", "тееша", "хеша", "кьеша"]
 
 # ============================================================
 #  ФРАЗЫ
@@ -258,8 +269,16 @@ ALICE_ALLOWED_IDS    = _id_set("ALICE_ALLOWED_IDS")      # user_id / application
 # ============================================================
 #  НАСТРОЙКИ ГОЛОСА
 # ============================================================
+# Приложение Яндекс Музыки: «включи музыку» открывает его, а не сайт (можно переопределить в .env)
+YANDEX_MUSIC_EXE = os.getenv("YANDEX_MUSIC_EXE", r"C:\Users\Yusuf\AppData\Local\Programs\YandexMusic\Яндекс Музыка.exe")
 MIC_ACTIVE_WINDOW = 10
+# услышала «Кеша» — остальные приложения (музыка, видео) тише до этой доли, пока слушает и
+# отвечает; как у Алисы, чтобы фон не попадал в запись. 0 — не приглушать
+DUCK_LEVEL = 0.2
 MIC_TIMEOUT = 5
+# Тише этого (dBFS) — не речь, а шум комнаты: webrtcvad срабатывал на −70 dB,
+# и GigaAM впустую распознавал тишину. Речь в логах — от −62 dB и громче.
+MIN_SPEECH_DB = float(os.getenv("MIN_SPEECH_DB", "-64"))
 TTS_LANG = "ru"
 TTS_SLOW = False
 
@@ -282,7 +301,8 @@ DESKTOP_TITLE  = "Голосовой помощник Кеша"
 #  ПОГОДА
 # ============================================================
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
-WEATHER_CITY    = "Москва"
+WEATHER_CITY    = "Сосенки"            # дом: Сосенки (Коммунарка)
+WEATHER_COORDS  = (55.583, 37.454)     # по координатам — OpenWeather не знает Сосенки по названию
 
 # ============================================================
 #  ПОНИМАНИЕ ФРАЗ (волна 2)
@@ -298,10 +318,89 @@ AI_CACHE_FILE = DATA_DIR / "ai_cache.json"
 AI_CACHE_TTL  = 24 * 3600     # сколько живёт ответ GigaChat в кэше, сек
 AI_CACHE_MAX  = 500           # максимум записей в кэше
 AI_COMMANDS_MAX_WORDS = 8     # длиннее — это вопрос, список команд GigaChat не шлём
+AI_MAX_WORDS = 10             # ответ GigaChat голосом — не длиннее стольких слов
+AI_FIX_COMMANDS = True        # без «Кеша» в окне команд: GigaChat исправляет фразу в команду (не отвечает)
+AI_FIX_MAX_WORDS = 5          # длиннее — фон, не спрашиваем
 
 UNKNOWN_LOG_FILE = LOGS_DIR / "kesha.log"
+
+# ============================================================
+#  УДОБСТВО (волна 3)
+# ============================================================
+HOTKEY = "ctrl+space"          # слушать без слова «Кеша»; "" — отключить
+
+# Распознавание команд: "aqua" (Avalon API, нужен AQUA_API_KEY) | "local" (GigaAM офлайн; "vosk" — то же).
+# При сбое Aqua Кеша сама переходит на локальный. Слово-активатор всегда ищется локально.
+STT_ENGINE = "aqua"
+
+# Защита. Чёрный список: что Кеша не открывает никогда (по любому каналу).
+SECURITY_BLOCKED_APPS = [
+    "cmd", "cmd.exe", "командная строка", "командную строку", "командной строки",
+    "powershell", "пауэршелл", "повершелл", "терминал", "terminal", "консоль",
+    "regedit", "реестр", "редактор реестра", "diskpart", "bcdedit", "gpedit",
+    "msconfig", "mmc", "services.msc", "управление дисками", "format",
+]
+# Белый список: если не пуст — открываются ТОЛЬКО эти приложения.
+SECURITY_ALLOWED_APPS = []
+# «Выполнить» и меню администратора дают запустить что угодно.
+SECURITY_BLOCKED_KEYS = ["win+r", "win+x", "ctrl+alt+delete", "ctrl+alt+del"]
+# Регулярки текста, который Кеша не напечатает (команды удаления/форматирования).
+SECURITY_BLOCKED_TEXT = [
+    r"\brmdir\b", r"\brd\s+/s\b", r"\bdel\s+(/[a-z]\s+)*[a-z]:\\", r"\bformat\s+[a-z]:?(?!\w)",
+    r"\breg\s+delete\b", r"\brm\s+-rf?\b", r"\bremove-item\b", r"\bdiskpart\b",
+    r"\bbcdedit\b", r"\bcipher\s+/w\b", r"\bvssadmin\b", r"\btakeown\b",
+    r"system32", r"\bshutdown\s+/",
+]
+
+SHOUT_DB = -14.0               # громче этого (dBFS) — Кеша считает, что на неё кричат
+SHOUT_MARGIN_DB = 9.0          # ...и на столько громче обычной речи пользователя
+
+# ============================================================
+#  ФИЧИ (волна 4)
+# ============================================================
+REMINDERS_FILE = DATA_DIR / "reminders.json"
+NOTES_FILE     = DATA_DIR / "notes.json"
+CALENDAR_FILE  = DATA_DIR / "calendar.json"
+STATS_DB       = DATA_DIR / "stats.db"
+TELEGRAM_USERS_FILE = DATA_DIR / "telegram_users.json"
+ALARM_MAX_SEC  = 120           # будильник звонит максимум столько секунд
+
+# Календарь: ссылки ICS (Google — «Закрытый адрес в формате iCal»,
+# Яндекс — «Экспорт» -> ссылка .ics) через запятую.
+CALENDAR_ICS_URLS = [u.strip() for u in os.getenv("CALENDAR_ICS_URLS", "").split(",") if u.strip()]
+# Запись событий в Яндекс Календарь по CalDAV (пароль приложения Яндекса).
+CALDAV_URL      = os.getenv("CALDAV_URL", "")       # https://caldav.yandex.ru/calendars/<логин>/events-default/
+CALDAV_USER     = os.getenv("CALDAV_USER", "")
+CALDAV_PASSWORD = os.getenv("CALDAV_PASSWORD", "")
+TIMEZONE        = "Europe/Moscow"
+
+# Контакты для «напиши маме в телеграм»: имя:chat_id через запятую.
+# Человек должен хотя бы раз написать боту (иначе Telegram не даст отправить).
+TELEGRAM_CONTACTS = {
+    k.strip().lower(): v.strip()
+    for k, v in (pair.split(":", 1) for pair in os.getenv("TELEGRAM_CONTACTS", "").split(",") if ":" in pair)
+}
+
+# ============================================================
+#  ГОЛОС (волна 5)
+# ============================================================
+# модель лежит в models/ (раньше искалась в корне — офлайн-голос молча не грузился)
+SILERO_MODEL_PATH = next((p for p in (BASE_DIR / "models" / "silero_v5_6_ru.pt", BASE_DIR / "silero_v5_6_ru.pt")
+                          if p.exists()), BASE_DIR / "models" / "silero_v5_6_ru.pt")
+SILERO_SPEAKERS = {"female": "xenia", "male": "eugene", "robot": "eugene"}
+SILERO_SAMPLE_RATE = 48000
 
 # ============================================================
 #  ПРОЧЕЕ
 # ============================================================
 DEBUG = True
+
+# ============================================================
+#  РОБОТ (Yahboom Raspbot V2 на Raspberry Pi 5)
+# ============================================================
+ROBOT_HOSTS = ["yahboom", "192.168.10.112", "192.168.1.56"]   # имя Pi, потом IP в разных сетях
+ROBOT_PORT = 8180                        # robot-web.service (robot_web_final.py), /api/move без токена
+ROBOT_URL = f"http://{ROBOT_HOSTS[0]}:{ROBOT_PORT}"
+ROBOT_SSH = f"pi@{ROBOT_HOSTS[0]}"       # ssh по ключу, для Клода
+ROBOT_SPEED = 150                        # 0–255
+ROBOT_MOVE_SEC = 1.0                     # сколько едет по умолчанию, потом стоп

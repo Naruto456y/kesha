@@ -392,11 +392,55 @@ function logout() {
     window.location.href = '/';
 }
 
+// ====== Состояние Кеши в реальном времени (WebSocket /ws) ======
+const STATE_LABELS = {
+    IDLE: 'ждёт', WAKE: 'слышит', LISTENING: 'слушает', THINKING: 'думает',
+    SPEAKING: 'говорит', ERROR: 'ошибка', OFFLINE: 'нет связи'
+};
+
+function setStatus(state, info) {
+    const box = document.getElementById('kStatus');
+    const label = document.getElementById('kStatusText');
+    if (!box || !label) return;
+    box.dataset.state = STATE_LABELS[state] ? state : 'IDLE';
+    label.textContent = STATE_LABELS[state] || state;
+    box.title = (info && (info.error || info.text)) || 'Что сейчас делает Кеша';
+}
+
+let wsRetry = 1000;
+function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    let ws;
+    try {
+        ws = new WebSocket(`${proto}://${location.host}/ws`);   // авторизация — по куке из /login
+    } catch (e) {
+        return;
+    }
+    ws.onopen = () => { wsRetry = 1000; };
+    ws.onmessage = (event) => {
+        let d;
+        try { d = JSON.parse(event.data); } catch (e) { return; }
+        if (d.type === 'state') {
+            setStatus(d.state, d.info);
+        } else if (d.type === 'message' && d.source === 'kesha') {
+            addMessage('⏰ ' + d.response, 'bot');   // напоминание / будильник / таймер
+        }
+    };
+    ws.onclose = () => {
+        setStatus('OFFLINE');
+        setTimeout(connectWS, wsRetry);
+        wsRetry = Math.min(wsRetry * 2, 30000);
+    };
+}
+
 // ====== Инициализация ======
 loadHistory();
-// кука сессии нужна для <img> (скриншоты, трансляция); обновляем её при каждом открытии чата
+// кука сессии нужна для <img> (скриншоты, трансляция) и WebSocket; обновляем её при каждом открытии чата
 fetch('/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: PASSWORD })
-}).finally(loadQuickButtons);
+}).finally(() => {
+    loadQuickButtons();
+    connectWS();
+});

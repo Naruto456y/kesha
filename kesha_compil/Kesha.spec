@@ -1,8 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+import os
+
 a = Analysis(
-    ['C:\\Users\\Yusuf\\Programming\\Python\\kesha\\bootloader.py'],
+    [os.path.join(SPECPATH, 'bootloader.py')],
     pathex=[],
     binaries=[],
     datas=[],
@@ -35,5 +37,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:\\Users\\Yusuf\\Programming\\Python\\kesha\\Media\\Kesha.ico'],
+    icon=[os.path.join(SPECPATH, '..', 'Media', 'Kesha.ico')],
 )

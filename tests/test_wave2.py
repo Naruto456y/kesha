@@ -61,6 +61,22 @@ def test_fuzzy_ignores_risky_unrelated_and_long_text():
     assert nlu.fuzzy_find("я вчера думал включи лапму в общем и целом не знаю", reg.commands) is None
 
 
+def test_fuzzy_requires_every_word_to_be_similar():
+    """Живой случай: «сделай так чтобы...» совпало с «сделай фотку» на 0.82 и сделало селфи."""
+    import commands  # noqa: F401
+    assert nlu.fuzzy_find("сделай так чтобы в комнате стало светлее", core.registry.commands) is None
+    reg = CommandRegistry()
+    reg.command(["сделай фотку"])(lambda t: "фото")
+    assert nlu.fuzzy_find("сделай так", reg.commands) is None
+    assert nlu.fuzzy_find("сделай фотко", reg.commands) is not None
+
+
+def test_macro_commands_are_exact_only():
+    import commands  # noqa: F401
+    risky = {c["name"] for c in core.registry.commands if c["risky"]}
+    assert {"take_selfie", "call", "toggle_bluetooth", "type_text", "press_key"} <= risky
+
+
 def test_fuzzy_ambiguous_returns_none():
     reg = CommandRegistry()
     reg.command(["включи музыку"])(lambda t: "a")
@@ -69,13 +85,18 @@ def test_fuzzy_ambiguous_returns_none():
 
 
 # ---------- паттерны реальных команд ----------
+# Эти команды отдают None, если фраза не их (open_app — «запусти музыку»,
+# stop_alarm — «стоп», когда будильник не звонит), и пропускают дальше.
+PASS_THROUGH = {"open_app", "stop_alarm", "translate_free"}   # делегируют другим командам
+
+
 def test_real_patterns_do_not_shadow_each_other():
     import commands  # noqa: F401
-    allowed = {("запусти музыку", "play_music")}   # open_app отдаёт None и пропускает дальше
     for c in core.registry.commands:
         for p in c["patterns"]:
-            first = next(core._matching(p))
-            assert first["name"] == c["name"] or (p, c["name"]) in allowed, (p, c["name"], first["name"])
+            first = next(m for m in core._matching(p)
+                         if m["name"] not in PASS_THROUGH or m["name"] == c["name"])
+            assert first["name"] == c["name"], (p, c["name"], first["name"])
 
 
 @pytest.mark.parametrize("phrase,name", [
@@ -120,10 +141,13 @@ def test_weather_city_parsing(monkeypatch):
         asked.append(params["q"])
         if params["q"].lower() != "казань":
             return Resp(404)
-        return Resp(200, {"name": "Казань", "main": {"temp": 11.6}, "weather": [{"description": "дождь"}]})
+        return Resp(200, {"name": "Казань", "main": {"temp": 11.6, "feels_like": 9.2, "humidity": 81},
+                          "weather": [{"description": "дождь"}], "wind": {"speed": 3.4}})
 
     monkeypatch.setattr(commands.requests, "get", fake_get)
-    assert commands.get_weather_cmd("погода в казани") == "Казань: 12°C, дождь"
+    assert commands.get_weather_cmd("погода в казани") == "Казань: 12°C, дождь, ветер 3 м/с"
+    assert commands.get_weather_cmd("погода в казани подробно") == \
+        "Казань: 12°C, дождь. Ощущается как 9°C, влажность 81%, ветер 3 м/с"
     assert commands.get_weather_cmd("погода в атлантиде") == "Не нашёл город атлантиде"
 
 
@@ -203,9 +227,22 @@ def test_ai_rewrites_into_command(env, monkeypatch, tmp_path):
     monkeypatch.setattr(core, "_gig", giga)
     monkeypatch.setattr(core, "AI_AVAILABLE", True)
     assert handle_command("сделай посветлее в комнате", "t") == "свет включён"
-    assert "Включить свет: включи свет | включи лампу" in giga.prompts[0]
+    assert "- включи свет / включи лампу" in giga.prompts[0]
     assert "выключи компьютер" not in giga.prompts[0]     # опасные не отправляем
     assert "AI_CMD | t" in _log(tmp_path)
+
+
+@pytest.mark.parametrize("reply", ["Включи свет", "Включить свет | включи свет", "включи лампу."])
+def test_ai_reply_without_cmd_prefix(env, monkeypatch, reply):
+    """GigaChat забыл «CMD:» и ответил фразой команды — всё равно выполняем."""
+    monkeypatch.setattr(core, "ai_ask", lambda t: reply)
+    assert handle_command("сделай посветлее", "t") == "свет включён"
+
+
+def test_ai_normal_answer_is_not_a_command(env, monkeypatch):
+    monkeypatch.setattr(core, "ai_ask", lambda t: "Включи свет в комнате, если темно — так полезнее для глаз.")
+    assert handle_command("почему болят глаза", "t").startswith("Включи свет в комнате")
+    assert env == []
 
 
 def test_ai_bad_command_is_not_executed(env, monkeypatch, tmp_path):

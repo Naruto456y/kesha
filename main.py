@@ -15,6 +15,14 @@ import sys
 import threading
 import time
 
+# Консоль Windows по умолчанию cp1251: print со смайликом (help_manager печатает «✅»)
+# падал с UnicodeEncodeError, и GigaChat в commands.py молча отключался.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import psutil
@@ -67,6 +75,8 @@ def _on_signal(signum, frame):
 
 
 atexit.register(_cleanup)
+import lifecycle
+lifecycle.on_exit(_cleanup)       # «Кеша, пока» закрывает всё и убивает ngrok
 signal.signal(signal.SIGINT, _on_signal)
 signal.signal(signal.SIGTERM, _on_signal)
 if hasattr(signal, "SIGBREAK"):
@@ -114,7 +124,17 @@ def main():
     ])
     run_all = args.all or no_flags
 
-    import commands  # noqa: регистрация команд
+    # одна Кеша на ПК: две слушают один микрофон (команды по два раза) и ловят Telegram Conflict
+    global _instance_mutex
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _instance_mutex = kernel32.CreateMutexW(None, False, "Global\\KeshaAssistant")
+    if ctypes.get_last_error() == 183:                        # ERROR_ALREADY_EXISTS
+        print("[main] Кеша уже запущена — вторую копию не запускаю.")
+        sys.exit(1)
+
+    import commands  # noqa: регистрация команд (и фич волн 3–5)
+    import features
+    features.start_background()   # напоминания, будильники, таймеры
 
     threads = []
     if args.voice or run_all:

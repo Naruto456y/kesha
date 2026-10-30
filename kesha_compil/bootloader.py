@@ -30,7 +30,7 @@ candidates = [
     os.path.join(exe_dir, "main.py"),                                      # рядом с .exe
     os.path.join(exe_dir, "kesha", "main.py"),                             # в подпапке
     os.environ.get("KESHA_PROJECT_DIR", ""),                               # через переменную
-    r"C:\Users\Yusuf\Programming\Python\kesha\main.py",                    # жёсткий путь (fallback)
+    r"C:\Users\Yusuf\Programming\Python\projects\kesha\main.py",            # жёсткий путь (fallback)
 ]
 
 project_main = None

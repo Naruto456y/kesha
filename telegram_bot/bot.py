@@ -17,6 +17,12 @@ def allowed(func):
     async def wrapper(u: Update, c: ContextTypes.DEFAULT_TYPE):
         user = u.effective_user
         uid = str(user.id) if user else ""
+        if user:
+            try:   # для «напиши маме в телеграм»: бот помнит, кто ему писал
+                from features import messenger
+                messenger.remember_user(user.id, user.first_name, user.username)
+            except Exception as e:
+                log.warning("не удалось запомнить пользователя: %s", e)
         if uid not in TELEGRAM_ALLOWED_IDS:
             log.warning("Отказано: user_id=%s", uid)
             if u.message:
@@ -53,7 +59,7 @@ async def cmd_say(u: Update, c: ContextTypes.DEFAULT_TYPE):
         return
     try:
         from voice import say
-        say(text)
+        say(text, force=True)   # даже в тихом режиме — просили явно
         await u.message.reply_text("Озвучил: " + text)
     except Exception as e:
         await u.message.reply_text("Ошибка TTS: " + str(e))
@@ -66,6 +72,25 @@ async def on_message(u: Update, c: ContextTypes.DEFAULT_TYPE):
         return
     response = await asyncio.to_thread(handle_command, text, "telegram")
     await u.message.reply_text(response or "...")
+
+
+_conflict_warned = False
+
+CONFLICT_HINT = ("Telegram: Conflict — этот же токен опрашивает ещё одна программа "
+                 "(вторая копия Кеши на другом ПК/сервере, старый скрипт, хостинг). Работает только одна. "
+                 "Закрой другую копию или выпусти новый токен: @BotFather → /revoke → впиши его в .env.")
+
+
+async def on_error(u: object, c: ContextTypes.DEFAULT_TYPE):
+    """Conflict — не авария: пишем понятную подсказку один раз, а не трейсбек каждые пару секунд."""
+    global _conflict_warned
+    from telegram.error import Conflict
+    if isinstance(c.error, Conflict):
+        if not _conflict_warned:
+            _conflict_warned = True
+            log.error(CONFLICT_HINT)
+        return
+    log.error("Ошибка Telegram-бота: %s", c.error, exc_info=c.error)
 
 
 def start_bot():
@@ -83,6 +108,7 @@ def start_bot():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("say", cmd_say))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
+    app.add_error_handler(on_error)
     log.info("Бот запущен.")
     app.run_polling()
 

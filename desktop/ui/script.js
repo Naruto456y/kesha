@@ -9,10 +9,32 @@ function initBridge() {
   new QWebChannel(qt.webChannelTransport, function (channel) {
     bridge = channel.objects.bridge;
     console.log('Bridge OK');
-    if (bridge && bridge.core_event) {
-      bridge.core_event.connect(onCoreEvent);
+    // события ядра/состояния/настройки приходят из Python через runJavaScript
+    if (bridge && bridge.get_commands) {
+      bridge.get_commands(function (json) {
+        try { loadRegistryCommands(JSON.parse(json)); } catch (e) { console.warn(e); }
+      });
+    }
+    if (bridge && bridge.get_settings) {
+      bridge.get_settings(function (json) {
+        try {
+          const s = JSON.parse(json);
+          Object.keys(s).forEach(k => onSetting(k, s[k]));
+        } catch (e) { console.warn(e); }
+      });
     }
   });
+}
+
+/* Команды из реестра Python (заменяют статичный список ниже) */
+function loadRegistryCommands(groups) {
+  if (!Array.isArray(groups) || !groups.length) return;
+  for (const k of Object.keys(COMMAND_CATEGORIES)) delete COMMAND_CATEGORIES[k];
+  for (const g of groups) {
+    COMMAND_CATEGORIES[g.category] = g.items.map(i => i.name + ' - ' + i.desc);
+  }
+  const search = document.getElementById('cmdSearch');
+  renderCommands(search ? search.value : '');
 }
 
 /* ============================================================
@@ -214,6 +236,13 @@ function pulseReactor(ms) {
    ЕДИНЫЙ ОБРАБОТЧИК СОБЫТИЙ ЯДРА
    ============================================================ */
 function onCoreEvent(source, text, response) {
+  if (source === 'kesha') {
+    // Кеша сама: напоминание, будильник, таймер
+    spawnCenterBurst('#FFC400');
+    pulseReactor(1500);
+    addMessage('⏰ ' + (response || ''), 'bot', 'kesha');
+    return;
+  }
   if (!text) return;
 
   const labels = {
@@ -279,26 +308,66 @@ function addMessage(text, sender, source) {
 }
 
 /* ============================================================
-   КНОПКА "СЛУШАТЬ" (только для ручного управления микрофоном)
+   СОСТОЯНИЯ РЕАКТОРА (state_manager -> bridge -> сюда)
    ============================================================ */
-let listening = false;
-function toggleListening() {
-  listening = !listening;
+// цвета и анимации — reactor.js / reactor_config.js (редактор: reactor_editor.html)
+const REACTOR_CFG = reactorConfig();
+
+function onState(state, text) {
+  if (!REACTOR_LABELS[state]) state = 'IDLE';
   const r = document.getElementById('reactor');
-  const b = document.getElementById('btnListen');
   const s = document.getElementById('statusBar');
-  if (listening) {
-    r.classList.add('listening');
-    b.classList.add('active');
-    b.textContent = 'СТОП';
-    s.textContent = 'LISTENING';
-    s.style.color = '#00FFAA';
+  const b = document.getElementById('btnListen');
+  const view = r ? applyReactorState(r, state, REACTOR_CFG) : REACTOR_CFG.states[state];
+  if (s) {
+    s.textContent = REACTOR_LABELS[state] + (state === 'ERROR' && text ? ': ' + text : '');
+    s.style.color = view.main;
+  }
+  if (b) b.classList.toggle('active', state === 'LISTENING');
+}
+
+/* ============================================================
+   НАСТРОЙКИ (тема, тихий режим)
+   ============================================================ */
+const uiSettings = {};
+function onSetting(key, value) {
+  uiSettings[key] = value;
+  if (key === 'theme') {
+    document.body.classList.toggle('theme-light', value === 'light');
+    const t = document.getElementById('btnTheme');
+    if (t) t.textContent = value === 'light' ? 'ТЁМНАЯ' : 'СВЕТЛАЯ';
+  }
+  if (key === 'silent') {
+    const m = document.getElementById('btnSilent');
+    if (m) {
+      m.classList.toggle('active', !!value);
+      m.textContent = value ? 'ГОЛОС ВЫКЛ' : 'ГОЛОС ВКЛ';
+    }
+  }
+}
+
+function setSetting(key, value) {
+  if (bridge && bridge.set_setting) bridge.set_setting(key, JSON.stringify(value));
+  else onSetting(key, value);
+}
+
+function openReactorEditor() {
+  if (bridge && bridge.open_reactor_editor) bridge.open_reactor_editor();
+  else window.open('reactor_editor.html', '_blank');
+}
+
+function toggleTheme() { setSetting('theme', uiSettings.theme === 'light' ? 'dark' : 'light'); }
+function toggleSilent() { setSetting('silent', !uiSettings.silent); }
+
+/* ============================================================
+   КНОПКА "СЛУШАТЬ" — как Ctrl+Space: микрофон без слова «Кеша»
+   ============================================================ */
+function toggleListening() {
+  if (bridge && bridge.listen_now) {
+    bridge.listen_now();
   } else {
-    r.classList.remove('listening');
-    b.classList.remove('active');
-    b.textContent = 'СЛУШАТЬ';
-    s.textContent = 'IDLE';
-    s.style.color = 'rgba(0,229,255,0.7)';
+    onState('LISTENING', '');
+    setTimeout(() => onState('IDLE', ''), 1500);
   }
 }
 
@@ -306,6 +375,8 @@ function toggleListening() {
    ИНИЦИАЛИЗАЦИЯ
    ============================================================ */
 window.addEventListener('load', function () {
+  const reactor = document.getElementById('reactor');
+  if (reactor) { buildReactor(reactor); onState('IDLE', ''); }
   renderCommands("");
   const inp = document.getElementById('commandInput');
   if (inp) inp.addEventListener('keypress', e => { if (e.key === 'Enter') sendFromInput(); });

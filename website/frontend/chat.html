@@ -10,6 +10,9 @@
     <div class="chat-container">
         <div class="chat-header">
             <h1>🧸 Кеша <span>веб-бот</span></h1>
+            <div class="k-status" id="kStatus" data-state="OFFLINE" title="Что сейчас делает Кеша">
+                <span class="k-dot"></span><span id="kStatusText">нет связи</span>
+            </div>
             <div class="actions">
                 <button onclick="clearHistory()" style="background:rgba(255,0,0,0.3);">🗑 Очистить историю</button>
                 <button onclick="logout()">🚪 Выйти</button>

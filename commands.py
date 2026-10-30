@@ -9,7 +9,11 @@
         return "Что сказать пользователю"
 """
 
-from core import registry
+import app_index
+import klog
+import persona
+import security
+from core import registry, current_source, ask_yes_no, gig_chat
 
 import os
 import re
@@ -31,8 +35,8 @@ import AppOpener
 
 
 from config import (
-    APP_PATHS, GAMES_PATHS, TIMER_PATH,
-    WEATHER_API_KEY, WEATHER_CITY,
+    APP_PATHS, GAMES_PATHS, TIMER_PATH, BUILTIN_APPS,
+    WEATHER_API_KEY, WEATHER_CITY, WEATHER_COORDS, YANDEX_MUSIC_EXE,
     GREETINGS, THANKS_RESPONSES, OK_RESPONSES, SEARCH_RESPONSES,
 )
 
@@ -97,11 +101,19 @@ def _set_volume(level):
         return False
 
 
-def _extract_query(text, words):
-    q = text.lower()
+def _strip_words(q, words):
     for w in sorted(words, key=len, reverse=True):   # сначала длинные фразы
         q = q.replace(w, "")
     return " ".join(q.split())
+
+
+def _extract_query(text, words):
+    q = text.lower()
+    # всё, что до команды («пофиг а открой obsidian»), — не название;
+    # но если после команды пусто («bsidin открой») — название стоит перед ней
+    found = [m.start() for w in words if (m := re.search(rf"(?<!\w){re.escape(w)}(?!\w)", q))]
+    tail = _strip_words(q[min(found):], words) if found else ""
+    return tail or _strip_words(q, words)
 
 
 def _mouse_patterns(*directions):
@@ -173,12 +185,13 @@ _STATUS = ["статус лампы", "статус света", "статус �
 
 @registry.command(
     ["привет", "здравствуй", "здравствуйте", "хай", "добрый день", "добрый вечер",
-     "доброе утро", "доброй ночи", "приветствую", "приветик", "здарова", "здорово",
+     "доброе утро", "приветствую", "приветик", "здарова", "здорово",
      "салют", "йоу", "хеллоу", "hello"],
     "Поздороваться", "Основные", priority=10,
 )
 def greeting(text):
-    return _r(GREETINGS)
+    # одно приветствие по времени суток («Добрый вечер!»), без второго «Привет! Что нужно?»
+    return persona.greeting()
 
 
 @registry.command(
@@ -197,16 +210,24 @@ def how_are_you(text):
     "Похвалить", "Основные", priority=10,
 )
 def thanks(text):
+    # «красавчик, молодец, так, открой клод» — похвала по пути, главное — команда после неё
+    if re.search(r"\b(?:открой|запусти|включи|выключи|поставь|найди|сделай|покажи|скажи|напиши)\b", text):
+        return None
     return _r(THANKS_RESPONSES)
 
 
 @registry.command(
-    ["пока", "выход", "выключись", "до свидания", "прощай", "до встречи", "до скорого",
-     "увидимся", "всего доброго", "всего хорошего", "хорошего дня", "бывай",
-     "спокойной ночи", "покеда", "чао", "bye"],
+    ["до встречи", "до скорого", "увидимся", "всего доброго", "всего хорошего", "хорошего дня",
+     "бывай", "спокойной ночи", "до завтра", "доброй ночи", "сладких снов"],
     "Попрощаться", "Основные", priority=20,
 )
 def goodbye(text):
+    if len(text.split()) > 6:
+        return None                   # длинная фраза с «до встречи» внутри — не прощание
+    if re.search(r"спокойной ночи|доброй ночи|сладких снов", text):
+        return "Спокойной ночи! Сладких снов."
+    if "до завтра" in text:
+        return "До завтра!"
     return "До свидания!"
 
 
@@ -216,11 +237,18 @@ def goodbye(text):
 
 @registry.command(
     ["время", "который час", "сколько времени", "сколько сейчас времени",
-     "который сейчас час", "сколько на часах", "сколько там времени"],
+     "который сейчас час", "сколько на часах", "сколько там времени",
+     "сколько щас времени", "сколько время", "сколько сейчас время", "который щас час",
+     "скажи время", "подскажи время", "текущее время"],
     "Текущее время", "Система",
 )
 def get_time(text):
     return f"Сейчас {datetime.now().strftime('%H:%M')}"
+
+
+_WEEKDAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+_MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
+               "сентября", "октября", "ноября", "декабря"]
 
 
 @registry.command(
@@ -230,7 +258,10 @@ def get_time(text):
     "Текущая дата", "Система",
 )
 def get_date(text):
-    return f"Сегодня {datetime.now().strftime('%d.%m.%Y')}"
+    now = datetime.now()
+    if "недел" in text:
+        return f"Сегодня {_WEEKDAYS_RU[now.weekday()]}."
+    return f"Сегодня {_WEEKDAYS_RU[now.weekday()]}, {now.day} {_MONTHS_GEN[now.month - 1]} {now.year} года."
 
 
 @registry.command(
@@ -243,7 +274,7 @@ def get_battery(text):
     b = psutil.sensors_battery()
     if not b:
         return "Информация о батарее недоступна"
-    status = "заряжается" if b.power_plugged else "от батареи"
+    status = "заряжается" if b.power_plugged else "не заряжается"
     return f"Батарея {status}. Уровень: {b.percent}%"
 
 
@@ -254,7 +285,8 @@ def get_battery(text):
 @registry.command(
     ["выключи компьютер", "выключи комп", "выключи пк", "выключи ноутбук",
      "выруби компьютер", "выруби комп", "выруби пк", "отключи компьютер",
-     "заверши работу", "шатдаун", "shutdown"],
+     "заверши работу", "шатдаун", "shutdown", "выключи систему",
+     "заверши работу компьютера", "отключи пк", "выруби ноутбук", "выключение компьютера"],
     "Выключить ПК", "Система", risky=True,
 )
 def shutdown_pc(text):
@@ -275,12 +307,68 @@ def restart_pc(text):
 
 @registry.command(
     ["спящий режим", "уснуть", "спать", "сон", "в спящий режим", "режим сна",
-     "усыпи компьютер", "усыпи комп", "засыпай"],
+     "усыпи компьютер", "усыпи комп", "засыпай", "переведи в спящий режим", "включи спящий режим",
+     "отправь в сон", "усыпи пк", "усыпи ноутбук", "компьютер спать", "режим ожидания"],
     "Спящий режим", "Система", risky=True,
 )
 def sleep_pc(text):
-    os.system("rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
+    _sleep_later(1.5)
     return "Ухожу в спящий режим"
+
+
+def _modern_standby():
+    """У ноутбука нет обычного сна S3, только Modern Standby (S0): там SetSuspendState
+    уводит в гибернацию, и будит её лишь кнопка питания."""
+    import ctypes
+    caps = (ctypes.c_ubyte * 128)()          # SYSTEM_POWER_CAPABILITIES: [5] SystemS3, [20] AoAc
+    try:
+        if ctypes.windll.powrprof.GetPwrCapabilities(ctypes.byref(caps)):
+            return bool(caps[20]) or not caps[5]
+    except Exception:
+        pass
+    return False
+
+
+def _sleep_later(delay):
+    """Сон через delay с — чтобы Кеша успела договорить. Просыпается от клавиатуры/мыши."""
+    def go():
+        import ctypes
+        if _modern_standby():
+            # погасить экран = так Windows и засыпает в Modern Standby (как по кнопке «Сон»)
+            ctypes.windll.user32.PostMessageW(0xFFFF, 0x0112, 0xF170, 2)
+        else:
+            ctypes.windll.powrprof.SetSuspendState(0, 0, 0)
+    threading.Timer(delay, go).start()
+
+
+@registry.command(
+    ["гибернация", "режим гибернации", "в гибернацию", "переведи в гибернацию", "усыпи глубоко"],
+    "Гибернация", "Система", risky=True,
+)
+def hibernate_pc(text):
+    threading.Timer(1.5, lambda: os.system("shutdown /h")).start()
+    return "Перехожу в гибернацию"
+
+
+@registry.command(
+    ["выйди из системы", "выйди из аккаунта", "смени пользователя", "разлогинься"],
+    "Выйти из системы", "Система", risky=True,
+)
+def logoff_pc(text):
+    threading.Timer(1.5, lambda: os.system("shutdown /l")).start()
+    return "Выхожу из системы"
+
+
+@registry.command(
+    ["выключи экран", "выключи монитор", "погаси экран", "отключи экран", "отключи монитор",
+     "выруби экран", "выруби монитор", "потуши экран"],
+    "Выключить экран", "Система", priority=16,
+)
+def monitor_off(text):
+    import ctypes
+    # HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2 = выключить; мышь/клавиша включит обратно
+    threading.Timer(1.0, lambda: ctypes.windll.user32.PostMessageW(0xFFFF, 0x0112, 0xF170, 2)).start()
+    return "Выключаю экран"
 
 
 @registry.command(
@@ -317,8 +405,14 @@ def cancel_shutdown(text):
     "Свернуть окно", "Система",
 )
 def minimize_window(text):
-    keyboard.send("win+down")
-    return _r(OK_RESPONSES)
+    # win+down развёрнутое окно лишь уменьшал — сворачиваем активное окно напрямую
+    import ctypes
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return "Нет активного окна."
+    user32.ShowWindow(hwnd, 6)      # SW_MINIMIZE
+    return "Свернул."
 
 
 @registry.command(
@@ -494,14 +588,70 @@ def scroll_up(text):
 
 @registry.command(
     _TYPE_WORDS,
-    "Напечатать текст", "Система", risky=True,
+    "Напечатать текст", "Система", priority=11, risky=True,   # «напечатай привет» — не приветствие
 )
 def type_text(text):
     t = _extract_query(text, _TYPE_WORDS)
     if t:
+        why = security.check_text(t)
+        if why:
+            klog.phrase("BLOCKED", current_source(), text, why)
+            return f"Не буду это печатать: {why}."
         keyboard.write(t)
         return f"Напечатал: {t}"
     return "Что напечатать?"
+
+
+# «нажми энтер», «нажми контрол плюс ц»: GigaAM пишет клавиши по-русски, а то и вперемешку («эntr»)
+_KEY_RU = {
+    "enter": ["энтер", "энтр", "ентер", "ентр", "интер", "энтра", "ентра", "ввод"],
+    "space": ["пробел", "спейс"], "esc": ["эскейп", "искейп", "эск", "ескейп"],
+    "tab": ["таб", "табуляция"], "backspace": ["бэкспейс", "бекспейс", "бэкспэйс", "стереть"],
+    "delete": ["делит", "делете", "дилит"], "shift": ["шифт"], "ctrl": ["контрол", "контроль", "ктрл"],
+    "alt": ["альт"], "win": ["вин", "виндоус", "виндовс", "windows"], "up": ["вверх"], "down": ["вниз"],
+    "left": ["влево", "лево"], "right": ["вправо", "право"], "home": ["хоум"], "end": ["энд"],
+    "caps lock": ["капс", "капслок"], "print screen": ["принтскрин", "скриншот"],
+    "page up": ["пейдж ап"], "page down": ["пейдж даун"],
+    **{f"f{i}": [f"ф{i}", f"эф{i}"] for i in range(1, 13)},
+}
+_KEY_BY_WORD = {w: k for k, words in _KEY_RU.items() for w in words}
+_TO_RU_SOUND = str.maketrans({"a": "а", "b": "б", "c": "к", "d": "д", "e": "е", "f": "ф", "g": "г",
+                              "h": "х", "i": "и", "k": "к", "l": "л", "m": "м", "n": "н", "o": "о",
+                              "p": "п", "r": "р", "s": "с", "t": "т", "u": "у", "v": "в", "w": "в",
+                              "y": "й", "z": "з"})
+
+
+def _one_key(word):
+    import difflib
+    w = word.lower().replace("ё", "е")
+    if w in _KEY_BY_WORD:
+        return _KEY_BY_WORD[w]
+    if w.isascii() and (len(w) == 1 or w in _KEY_RU):       # «c», «enter», «f5» — уже по-английски
+        return w
+    ru = w.translate(_TO_RU_SOUND)
+    if ru in _KEY_BY_WORD:
+        return _KEY_BY_WORD[ru]
+    close = difflib.get_close_matches(ru, list(_KEY_BY_WORD), n=1, cutoff=0.75)
+    return _KEY_BY_WORD[close[0]] if close else w
+
+
+def key_combo(spoken):
+    """«контрол плюс ц» -> «ctrl+ц», «эntr» -> «enter», «стрелка вверх» -> «up»."""
+    t = spoken.lower()
+    for name in ("пейдж ап", "пейдж даун"):
+        t = t.replace(name, name.replace(" ", "_"))
+    words = [w for w in re.split(r"[\s+]+", t) if w and w not in ("плюс", "стрелка", "стрелку", "клавишу", "и")]
+    return "+".join(_one_key(w.replace("_", " ")) for w in words)
+
+
+@registry.command(
+    ["энтер", "энтр", "ентер", "интер", "ввод", "нажми энтер", "нажми энтр", "нажми ентер",
+     "нажми интер", "нажми ввод", "enter", "нажми enter"],
+    "Нажать Enter", "Система", priority=6,
+)
+def press_enter(text):
+    keyboard.send("enter")
+    return "Нажал enter"
 
 
 @registry.command(
@@ -511,6 +661,11 @@ def type_text(text):
 def press_key(text):
     key = _extract_query(text, _KEY_WORDS)
     if key:
+        key = key_combo(key)
+        why = security.check_keys(key)
+        if why:
+            klog.phrase("BLOCKED", current_source(), text, why)
+            return f"Не буду: {why}."
         try:
             keyboard.send(key)
             return f"Нажал {key}"
@@ -551,7 +706,10 @@ def search_web(text):
     if not query:
         return "Что искать?"
     webbrowser.open(f"https://yandex.ru/search/?text={quote(query)}")
-    return _r(SEARCH_RESPONSES)
+    from features import web
+    web.remember_search(query)
+    ask_yes_no(lambda: web.open_first(query))
+    return f"{_r(SEARCH_RESPONSES)} Открыть первую ссылку?"
 
 
 @registry.command(
@@ -568,7 +726,9 @@ def open_youtube(text):
 
 _CITY_RE = re.compile(r"\b(?:в|во)\s+([a-zа-яё\-]+(?:\s+[a-zа-яё\-]+)?)")
 _CITY_STOP = {"сегодня", "завтра", "сейчас", "послезавтра", "вечером", "утром",
-              "днем", "днём", "ночью", "на", "по", "и", "а"}
+              "днем", "днём", "ночью", "на", "по", "и", "а", "подробно", "подробнее",
+              "детально", "влажность", "ветер", "прогноз", "погода", "погоду",
+              "школу", "школе", "садик", "магазин", "парк", "гости", "кино", "поход"}
 _CITY_ALIASES = {
     "питер": "Санкт-Петербург", "питере": "Санкт-Петербург", "спб": "Санкт-Петербург",
     "петербург": "Санкт-Петербург", "петербурге": "Санкт-Петербург",
@@ -577,6 +737,7 @@ _CITY_ALIASES = {
     "нижнем новгороде": "Нижний Новгород", "ростове": "Ростов-на-Дону",
     "ростове-на-дону": "Ростов-на-Дону", "нью-йорке": "Нью-Йорк",
     "нью йорке": "Нью-Йорк", "сочи": "Сочи",
+    "сосенках": "Сосенки", "сосенки": "Сосенки", "коммунарке": "Сосенки", "коммунарка": "Сосенки",
 }
 
 
@@ -609,11 +770,18 @@ def _city_candidates(name):
     return out
 
 
+def _place(city):
+    """Город по умолчанию (Сосенки) — по координатам: по названию OpenWeather его не знает."""
+    if city.lower() == WEATHER_CITY.lower() and WEATHER_COORDS:
+        return {"lat": WEATHER_COORDS[0], "lon": WEATHER_COORDS[1]}
+    return {"q": city}
+
+
 def _fetch_weather(city):
     """-> dict ответа OpenWeather или None, если такого города нет."""
     r = requests.get(
         "http://api.openweathermap.org/data/2.5/weather",
-        params={"q": city, "appid": WEATHER_API_KEY, "units": "metric", "lang": "ru"},
+        params={**_place(city), "appid": WEATHER_API_KEY, "units": "metric", "lang": "ru"},
         timeout=10,
     )
     if r.status_code == 404:
@@ -621,24 +789,130 @@ def _fetch_weather(city):
     return r.json()
 
 
+def _resolve_weather(text, fetch):
+    """Перебрать варианты названия города. -> (данные, название) или (None, имя)."""
+    name = _extract_city(text)
+    for candidate in _city_candidates(name):
+        data = fetch(candidate)
+        if data:
+            return data, candidate
+    return None, name
+
+
+def _weather_advice(text, temp, desc):
+    """Совет к погоде, если спросили «нужен ли зонт» / «как одеться»."""
+    tips = []
+    if re.search(r"зонт|дожд", text):
+        wet = re.search(r"дожд|ливен|гроз|морос", desc)
+        tips.append("Зонт лучше взять." if wet else "Дождя нет, зонт не нужен.")
+    if re.search(r"одеть|надеть|холодно|тепло", text):
+        tips.append("Надевай зимнюю куртку, шапку и перчатки." if temp <= -5 else
+                    "Нужна тёплая куртка и шапка." if temp <= 5 else
+                    "Подойдёт лёгкая куртка или толстовка." if temp <= 15 else
+                    "Тепло — хватит футболки." if temp >= 22 else "Хватит кофты.")
+    return (". " + " ".join(tips)) if tips else ""
+
+
+def _wind(speed):
+    return f"ветер {round(speed)} м/с"
+
+
 @registry.command(
     ["погода", "температура на улице", "какая погода", "что на улице", "погоду", "погоде",
-     "погодка", "прогноз", "сколько градусов", "какая температура", "что с погодой",
-     "как на улице", "холодно ли", "тепло ли"],
+     "погодка", "прогноз", "сколько градусов", "сколько сейчас градусов", "сколько щас градусов", "сколько там градусов", "какая температура", "что с погодой",
+     "как на улице", "холодно ли", "тепло ли", "нужен ли зонт", "брать ли зонт",
+     "взять зонт", "нужен зонт", "будет ли дождь", "идет ли дождь", "идёт ли дождь",
+     "холодно на улице", "тепло на улице", "как одеться", "что надеть", "во что одеться"],
     "Узнать погоду", "Интернет", followup="погода в {arg}",
 )
 def get_weather_cmd(text):
-    name = _extract_city(text)
+    if re.search(r"\bзавтра\b|\bпрогноз|\bна (3|три|неделю)\b|\bвыходн", text):
+        return weather_forecast(text)   # «погода в москве на завтра»
     try:
-        for candidate in _city_candidates(name):
-            data = _fetch_weather(candidate)
-            if data:
-                temp = round(data["main"]["temp"])
-                desc = data["weather"][0]["description"]
-                return f"{data.get('name', candidate)}: {temp}°C, {desc}"
-        return f"Не нашёл город {name}"
+        data, name = _resolve_weather(text, _fetch_weather)
+        if not data:
+            return f"Не нашёл город {name}"
+        temp = round(data["main"]["temp"])
+        desc = data["weather"][0]["description"]
+        city = data.get("name", name)
+        answer = f"{city}: {temp}°C, {desc}"
+        if "подробн" in text or "влажн" in text or "ветер" in text or "ветр" in text:
+            feels = round(data["main"].get("feels_like", temp))
+            answer += (f". Ощущается как {feels}°C, влажность {data['main'].get('humidity', '?')}%, "
+                       f"{_wind(data.get('wind', {}).get('speed', 0))}")
+        elif "wind" in data:
+            answer += f", {_wind(data['wind'].get('speed', 0))}"
+        return answer + _weather_advice(text, temp, desc)
     except Exception as e:
         return f"Ошибка погоды: {e}"
+
+
+def _fetch_forecast(city):
+    r = requests.get(
+        "http://api.openweathermap.org/data/2.5/forecast",
+        params={**_place(city), "appid": WEATHER_API_KEY, "units": "metric", "lang": "ru"},
+        timeout=10,
+    )
+    if r.status_code == 404:
+        return None
+    return r.json()
+
+
+def summarize_forecast(data, days, today):
+    """3-часовые точки OpenWeather -> по дню: мин/макс и самое частое описание."""
+    by_day = {}
+    for point in data["list"]:
+        day = datetime.fromtimestamp(point["dt"]).date()
+        by_day.setdefault(day, []).append(point)
+    out = []
+    labels = {1: "Завтра", 2: "Послезавтра"}
+    for offset in days:
+        day = today + timedelta(days=offset)
+        pts = by_day.get(day)
+        if not pts:
+            continue
+        lo = round(min(p["main"]["temp_min"] for p in pts))
+        hi = round(max(p["main"]["temp_max"] for p in pts))
+        descs = [p["weather"][0]["description"] for p in pts]
+        desc = max(set(descs), key=descs.count)
+        wind = max(p["wind"]["speed"] for p in pts)
+        label = labels.get(offset) or f"{_WEEKDAYS_RU[day.weekday()].capitalize()}"
+        temps = f"{lo}°C" if lo == hi else f"от {lo} до {hi}°C"
+        out.append(f"{label}: {temps}, {desc}, ветер до {round(wind)} м/с")
+    return out
+
+
+_WEEKDAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+
+
+@registry.command(
+    ["погода на завтра", "погода завтра", "какая погода будет завтра", "погода на послезавтра",
+     "прогноз на завтра", "прогноз на 3 дня", "прогноз на три дня", "прогноз погоды на неделю",
+     "погода на неделю", "погода на 3 дня", "погода на три дня", "какая будет погода",
+     "прогноз на выходные", "погода на выходные", "что с погодой завтра"],
+    "Прогноз погоды на 3 дня", "Интернет", priority=3, followup="погода на 3 дня в {arg}",
+)
+def weather_forecast(text):
+    try:
+        data, name = _resolve_weather(text, _fetch_forecast)
+        if not data:
+            return f"Не нашёл город {name}"
+        today = date.today()
+        if "послезавтра" in text:
+            days = [2]
+        elif "завтра" in text and not re.search(r"\b(3|три|неделю|выходн)", text):
+            days = [1]
+        elif "выходн" in text:
+            days = [(5 - today.weekday()) % 7 or 7, (6 - today.weekday()) % 7 or 7]
+        else:
+            days = [1, 2, 3]
+        lines = summarize_forecast(data, days, today)
+        if not lines:
+            return "Прогноза на эти дни нет."
+        city = data.get("city", {}).get("name", name)
+        return f"{city}. " + ". ".join(lines) + "."
+    except Exception as e:
+        return f"Ошибка прогноза: {e}"
 
 
 @registry.command(
@@ -722,6 +996,8 @@ def school_schedule(text):
     "Запустить Minecraft", "Игры", priority=5,
 )
 def open_minecraft(text):
+    if re.search(r"видео|ролик|ютуб|youtube|летсплей|стрим", text):
+        return search_youtube("найди видео " + re.sub(r"\b(?:включи|покажи|поставь|найди)\b", "", text))
     path = APP_PATHS.get("майнкрафт")
     if path and os.path.exists(path):
         os.startfile(path)
@@ -761,7 +1037,12 @@ def open_browser(text):
     ["открой вс код", "открой visual studio code", "открой vs code", "открой визуалку",
      "запусти вс код", "запусти vs code", "запусти visual studio code",
      "запусти визуалку", "вс код", "vs code", "визуалка", "открой вскод",
-     "открой редактор кода", "открой среду разработки"],
+     "открой редактор кода", "открой среду разработки",
+     # как GigaAM слышит «VS Code»
+     "vs код", "vs кот", "вс кот", "вскот", "вскод", "вэ эс код", "вес код", "вес кот", "wes code",
+     "wes cote", "bascod", "баскод", "бас код", "васкод", "открой vs код", "открой vs кот",
+     "открой вс кот", "открой вскот", "открой wes cote", "открой bascod", "открой баскод",
+     "открой вес код", "запусти vs код"],
     "Открыть VS Code", "Система", priority=6,
 )
 def open_vscode(text):
@@ -771,6 +1052,19 @@ def open_vscode(text):
         return "Открываю Visual Studio Code"
     keyboard.send("win+1")
     return "Открываю Visual Studio Code"
+
+
+REACTOR_EDITOR = Path(__file__).parent / "desktop" / "ui" / "reactor_editor.html"
+
+
+@registry.command(
+    ["редактор реактора", "открой редактор реактора", "настрой реактор", "цвета реактора",
+     "поменяй цвет реактора", "настройки реактора"],
+    "Редактор цветов и анимаций реактора", "Система", priority=12,
+)
+def reactor_editor(text):
+    os.startfile(str(REACTOR_EDITOR))
+    return "Открываю редактор реактора. Выбери цвета и нажми «Копировать конфиг»."
 
 
 @registry.command(
@@ -790,6 +1084,10 @@ def open_app(text):
     app = _extract_query(text, _OPEN_WORDS)
     if not app:
         return "Что открыть?"
+    why = security.check_app(app)
+    if why:
+        klog.phrase("BLOCKED", current_source(), text, why)
+        return f"Не буду открывать: {why}."
 
     for key, path in APP_PATHS.items():
         if key in app:
@@ -800,11 +1098,84 @@ def open_app(text):
                 except Exception:
                     pass
 
+    for key, exe in BUILTIN_APPS.items():
+        if key in app:
+            try:
+                os.startfile(exe)
+                return f"Открываю {key}"
+            except Exception:
+                pass
+
+    # ярлыки «Пуска»: «обсидиан», «доту», искажения GigaAM вроде «psidion»
+    hit = app_index.find(app)
+    if hit:
+        why = security.check_app(hit[0])
+        if why:
+            klog.phrase("BLOCKED", current_source(), text, why)
+            return f"Не буду открывать: {why}."
+        try:
+            app_index.launch(hit[1])
+            return f"Открываю {hit[0]}"
+        except Exception as e:
+            print(f"[open_app] {hit[1]}: {e}")
+
+    # раньше AppOpener сам искал «ближайшее» и открывал что угодно
+    # («запусти ту штуку с кубиками» -> случайная программа); теперь — только похожее
+    name = _closest_app(app)
+    if name is None:
+        site = _closest_site(app)
+        if site:
+            webbrowser.open(site[1])
+            return f"Открываю {site[0]}"
+        return f"Не нашёл приложение «{app}»"
+    why = security.check_app(name)
+    if why:
+        klog.phrase("BLOCKED", current_source(), text, why)
+        return f"Не буду открывать: {why}."
     try:
-        AppOpener.open(app, match_closest=True)
-        return f"Открываю {app}"
+        AppOpener.open(name)
+        return f"Открываю {name}"
     except Exception:
         return f"Не нашёл {app}"
+
+
+# «открой ruтube» (GigaAM так слышит «ютуб»): программы нет — может, это сайт
+_SITES = {
+    "YouTube": ("https://www.youtube.com", ["youtube", "ютуб", "ютюб", "ютьюб"]),
+    "ВКонтакте": ("https://vk.com", ["вконтакте", "vk", "вк"]),
+    "Википедию": ("https://ru.wikipedia.org", ["википедия", "wikipedia", "вики"]),
+    "Кинопоиск": ("https://www.kinopoisk.ru", ["кинопоиск", "kinopoisk"]),
+    "Twitch": ("https://www.twitch.tv", ["twitch", "твич"]),
+    "Яндекс Карты": ("https://yandex.ru/maps", ["карты", "яндекс карты"]),
+}
+
+
+def _closest_site(name, cutoff=0.7):
+    import difflib
+    from nlu import _LOOKALIKE
+    low = name.lower().replace("ё", "е")
+    variants = {low, low.translate(_LOOKALIKE)}       # «ruтube» -> «rutube»
+    best, score = None, cutoff
+    for title, (url, words) in _SITES.items():
+        for w in words:
+            for v in variants:
+                r = difflib.SequenceMatcher(None, v, w).ratio()
+                if r >= score and (len(w) > 2 or v == w):
+                    best, score = (title, url), r
+    return best
+
+
+def _closest_app(name, cutoff=0.6):
+    import difflib
+    try:
+        names = list(AppOpener.give_appnames())
+    except Exception as e:
+        print(f"[open_app] список приложений недоступен: {e}")
+        return None
+    if name in names:
+        return name
+    match = difflib.get_close_matches(name, names, n=1, cutoff=cutoff)
+    return match[0] if match else None
 
 
 @registry.command(
@@ -870,6 +1241,19 @@ def game_guess(text):
 #  МЕДИА
 # ============================================================
 
+def _open_yandex_music():
+    """Запустить приложение Яндекс Музыки (если уже открыто — выведет окно вперёд).
+    Нет приложения — открываем сайт. -> True, если запустилось приложение."""
+    if os.path.exists(YANDEX_MUSIC_EXE):
+        try:
+            os.startfile(YANDEX_MUSIC_EXE)
+            return True
+        except OSError as e:
+            print(f"[music] приложение не запустилось: {e}")
+    webbrowser.open("https://music.yandex.ru/")
+    return False
+
+
 @registry.command(
     _MUSIC_WORDS,
     "Включить музыку", "Медиа",
@@ -883,7 +1267,9 @@ def play_music(text):
             return f"Ищу: {query}"
         except Exception:
             return "Ошибка запуска музыки"
-    webbrowser.open("https://music.yandex.ru/")
+    _open_yandex_music()
+    from features import yamusic
+    yamusic.click_play_async()          # жёлтая кнопка «играть» на главной
     return "Открываю Яндекс.Музыку"
 
 
@@ -894,23 +1280,71 @@ def play_music(text):
 )
 def play_wave(text):
     try:
-        AppOpener.open("Yandex", True)
-        webbrowser.open("https://music.yandex.ru/")
-        time.sleep(2)
-        keyboard.send("k")
+        _open_yandex_music()
+        from features import yamusic
+        if not yamusic.click_play(timeout=15):
+            keyboard.send("k")          # кнопку не нашли — старый способ
         return "Включаю мою волну"
     except Exception:
         return "Ошибка"
 
 
+def _foreground_title():
+    import ctypes
+    u = ctypes.windll.user32
+    h = u.GetForegroundWindow()
+    buf = ctypes.create_unicode_buffer(u.GetWindowTextLengthW(h) + 1)
+    u.GetWindowTextW(h, buf, len(buf))
+    return buf.value.lower()
+
+
+def _music_site_focused():
+    """Открыт ли сайт плеера. Заголовок окна подсказывает быстро (YouTube, вкладка с названием),
+    но надёжнее логотип Яндекс Музыки на экране — его ищем, если по заголовку не ясно."""
+    t = _foreground_title()
+    if any(w in t for w in ("яндекс музыка", "яндекс.музыка", "music.yandex", "youtube", "ютуб")):
+        return True
+    from features import yamusic
+    return yamusic.logo_visible()
+
+
+# мультимедийные клавиши Windows: их ловит любой плеер (приложение Яндекс Музыки, браузер),
+# даже свёрнутый и без фокуса. Буквы «d»/«p» печатались в активное окно, если плеер не впереди.
+MEDIA_PLAY_PAUSE, MEDIA_NEXT, MEDIA_PREV = "play/pause media", "next track", "previous track"
+
+
+def _yandex_music_running():
+    exe = os.path.basename(YANDEX_MUSIC_EXE).lower()
+    try:
+        return any((p.info["name"] or "").lower() == exe for p in psutil.process_iter(["name"]))
+    except Exception:
+        return False
+
+
+def _music_key(site_key, background_key, start_if_closed=False):
+    """Открыт сайт плеера — горячие клавиши страницы (N, K…); иначе мультимедийная клавиша.
+    start_if_closed: Яндекс Музыка не запущена — запустить и включить (на «продолжи», «дальше»)."""
+    if _music_site_focused():
+        keyboard.send(site_key)
+        return True
+    if start_if_closed and not _yandex_music_running():
+        _open_yandex_music()
+        from features import yamusic
+        yamusic.click_play_async()
+        return False
+    keyboard.send(background_key)
+    return True
+
+
 @registry.command(
     ["пауза", "стоп музыка", "заткнись", "выключи музыку", "стоп", "останови музыку",
      "останови", "поставь на паузу", "на паузу", "хватит музыки", "выруби музыку",
-     "отключи музыку", "замолчи", "помолчи", "останови песню", "останови трек"],
+     "отключи музыку", "замолчи", "помолчи", "останови песню", "останови трек", "убери музыку",
+     "тормозни музыку", "приостанови музыку", "поставь музыку на паузу"],
     "Пауза", "Медиа", priority=5,
 )
 def music_pause(text):
-    keyboard.send("k")
+    _music_key("k", MEDIA_PLAY_PAUSE)
     return "Пауза"
 
 
@@ -920,7 +1354,8 @@ def music_pause(text):
     "Продолжить после паузы", "Медиа", priority=5,
 )
 def music_resume(text):
-    keyboard.send("k")
+    if not _music_key("k", MEDIA_PLAY_PAUSE, start_if_closed=True):
+        return "Включаю Яндекс Музыку"
     return "Продолжаю"
 
 
@@ -931,7 +1366,8 @@ def music_resume(text):
     "Следующий трек", "Медиа", priority=5,
 )
 def music_next(text):
-    keyboard.send("n")
+    if not _music_key("n", MEDIA_NEXT, start_if_closed=True):
+        return "Включаю Яндекс Музыку"
     return "Следующий"
 
 
@@ -942,7 +1378,7 @@ def music_next(text):
     "Предыдущий трек", "Медиа", priority=5,
 )
 def music_prev(text):
-    keyboard.send("p")
+    _music_key("p", MEDIA_PREV)
     return "Предыдущий"
 
 
@@ -992,27 +1428,61 @@ def make_screenshot(text):
         return f"Ошибка скриншота: {e}"
 
 
+def _launch_camera():
+    """Приложение «Камера» напрямую (URI), а не Win+цифра: порядок значков на панели задач
+    у каждого свой и меняется. Запасной путь — поиск по названию через AppOpener."""
+    try:
+        os.startfile("microsoft.windows.camera:")
+        return True
+    except OSError:
+        pass
+    for name in ("camera", "камера"):
+        try:
+            AppOpener.open(name, match_closest=False, output=False)
+            return True
+        except Exception:
+            continue
+    return False
+
+
 @registry.command(
     ["камера", "открой камеру", "включи камеру", "запусти камеру", "покажи камеру",
      "веб камера", "веб-камера", "вебка", "открой вебку"],
     "Открыть камеру", "Система", priority=5,
 )
 def open_camera(text):
-    keyboard.send("win+4")
-    return "Открываю камеру"
+    return "Открываю камеру" if _launch_camera() else "Не нашёл приложение «Камера»"
+
+
+@registry.command(
+    ["пока", "пока пока", "выход", "выключись", "до свидания", "прощай", "чао", "bye", "покеда",
+     "попока", "попака", "закройся", "выйди из кеши"],
+    "Попрощаться и закрыть Кешу", "Основные", priority=21, risky=True,
+)
+def quit_kesha(text):
+    """«Кеша, пока» — попрощаться и закрыть программу. Только короткая фраза: слово «пока»
+    в обычной речи («пока я был в школе…») и фоновое видео не должны выключать Кешу."""
+    import lifecycle
+    if len(text.split()) > 3:
+        return None
+    if current_source() not in ("voice", "app"):
+        return "До свидания! Закрывать себя удалённо не буду."
+    lifecycle.request_exit()
+    return "До свидания! Выключаюсь."
 
 
 @registry.command(
     ["селфи", "сделай селфи", "сфоткай меня", "сделай фото", "сфотографируй меня",
      "сфоткай", "сними меня", "сделай фотку", "сделай снимок", "хочу селфи",
      "давай селфи", "сними фото"],
-    "Сделать селфи", "Специальные",
+    "Сделать селфи", "Специальные", risky=True,   # макрос клавиш (win+2, пробел) — только точной фразой
 )
 def take_selfie(text):
-    keyboard.send("win+2")
+    if not _launch_camera():
+        return "Не нашёл приложение «Камера»"
 
     def _snap():
-        time.sleep(3)
+        time.sleep(4)                 # пока Камера запустится и получит фокус
         keyboard.send("space")
 
     threading.Timer(0, _snap).start()
@@ -1294,7 +1764,7 @@ def translate_en(text):
         return "Что перевести?"
     if GIGACHAT_AVAILABLE and _gig is not None:
         try:
-            ans = _gig.chat(f"Переведи на английский: {query}. Без объяснений.")
+            ans = gig_chat(_gig, f"Переведи на английский: {query}. Без объяснений.")
             return ans.strip() if ans else "Не удалось перевести"
         except Exception as e:
             print(f"[translate_en] {e}")
@@ -1312,12 +1782,36 @@ def translate_ru(text):
         return "Что перевести?"
     if GIGACHAT_AVAILABLE and _gig is not None:
         try:
-            ans = _gig.chat(f"Переведи на русский: {query}. Без объяснений.")
+            ans = gig_chat(_gig, f"Переведи на русский: {query}. Без объяснений.")
             return ans.strip() if ans else "Не удалось перевести"
         except Exception as e:
             print(f"[translate_ru] {e}")
     webbrowser.open(f"https://translate.yandex.ru/?lang=en-ru&text={quote(query)}")
     return "Открываю переводчик"
+
+
+_TR_FILLER = re.compile(
+    r"\b(?:переведи|перевод|как будет|как сказать|слово|фразу|пожалуйста|"
+    r"на английский язык|на английский|на английском|по[- ]английски|на инглиш|"
+    r"на русский язык|на русский|на русском|по[- ]русски|с английского|с русского)\b")
+
+
+@registry.command(
+    ["переведи", "как будет", "как сказать", "по-английски", "по английски", "на английский",
+     "по-русски", "по русски", "на русский"],
+    "Перевод любой фразы", "Специальные", priority=11,
+)
+def translate_free(text):
+    """«переведи привет на английский», «как будет кошка по-английски», «переведи hello».
+    Приоритет выше приветствия: иначе «переведи привет» отвечало «Привет!»."""
+    if not re.search(r"перев|англ|русск", text):
+        return None                   # «как будет погода» — не перевод
+    query = " ".join(_TR_FILLER.sub(" ", text).split()).strip(" ,.?!«»\"")
+    if not query:
+        return "Что перевести?"
+    to_ru = "русск" in text or ("англ" not in text and re.search(r"[a-z]", query))
+    return translate_ru(f"переведи на русский {query}") if to_ru else \
+        translate_en(f"переведи на английский {query}")
 
 
 @registry.command(
@@ -1334,8 +1828,10 @@ def draw(text):
 
 @registry.command(
     ["ухожу", "ушёл", "я ушёл", "ухожу спать", "я ушел", "я ухожу", "я ушла",
-     "ушел", "пошёл спать", "пошел спать", "иду спать", "пойду спать"],
-    "Выключить свет и ПК", "Специальные", priority=15, risky=True,
+     "ушел", "пошёл спать", "пошел спать", "иду спать", "пойду спать", "я пошёл", "я пошел",
+     "я ушёл из дома", "я ухожу из дома", "я на улицу", "я гулять", "всё я пошёл", "все я пошел",
+     "уже ухожу", "мне пора"],
+    "Выключить свет и уйти в спящий режим", "Специальные", priority=15, risky=True,
 )
 def leaving_home(text):
     home = _get_home()
@@ -1344,8 +1840,8 @@ def leaving_home(text):
             home.device(_DEFAULT_LIGHT).turn_off()
         except Exception as e:
             print(f"[leaving_home] свет: {e}")
-    os.system("shutdown /s /t 10")
-    return "Выключаю свет и компьютер. До свидания!"
+    _sleep_later(4)          # не выключаем ПК: сон — вернулся и сразу всё открыто
+    return "Выключаю свет, компьютер засыпает. До встречи!"
 
 
 @registry.command(
@@ -1353,23 +1849,16 @@ def leaving_home(text):
     "Таймер", "Специальные", priority=5,
 )
 def set_timer(text):
-    m = re.search(r"\d+", text)
-    duration = m.group() if m else ""
-    if duration:
-        if os.path.exists(TIMER_PATH):
-            subprocess.Popen([sys.executable, TIMER_PATH])
-            time.sleep(2)
-            keyboard.write(duration)
-            keyboard.send("Enter")
-            return f"Таймер на {duration} мин"
-        return "Файл таймера не найден"
-    return "На сколько минут?"
+    # раньше запускался Media/timer.py и цифры печатались в активное окно;
+    # теперь — фоновый таймер: звонок + уведомление, «стоп» выключает
+    from features import reminders
+    return reminders.add_timer(text)
 
 
 @registry.command(
     ["bluetooth", "блютуз", "включи блютуз", "выключи блютуз", "блютус", "включи блютус",
      "выключи блютус", "включи bluetooth", "выключи bluetooth", "переключи блютуз",
-     "переключи bluetooth", "отключи блютуз"],
+     "переключи bluetooth", "отключи блютуз", "blutooth", "blutus", "bluetus", "блютуса", "блю туз"],
     "Bluetooth", "Специальные", risky=True,
 )
 def toggle_bluetooth(text):
@@ -1512,3 +2001,9 @@ FLAT_COMMANDS = []
 for _cat, _cmds in COMMAND_CATEGORIES.items():
     for _cmd in _cmds:
         FLAT_COMMANDS.append(_cmd)
+
+
+# ============================================================
+#  ФИЧИ ВОЛН 3–5 (напоминания, заметки, календарь, курсы, режимы...)
+# ============================================================
+import features  # noqa: E402,F401  — регистрирует свои команды

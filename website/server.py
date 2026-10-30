@@ -138,6 +138,8 @@ async def ws_endpoint(ws: WebSocket):
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
         ws_manager.disconnect(ws)
 
 

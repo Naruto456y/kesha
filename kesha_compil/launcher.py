@@ -34,7 +34,7 @@ if not os.path.exists(main_py):
 
 # Вариант 3: жёсткий путь (если .exe на рабочем столе, а проект в другом месте)
 if not os.path.exists(main_py):
-    hardcoded = r"C:\Users\Yusuf\Programming\Python\kesha\main.py"
+    hardcoded = r"C:\Users\Yusuf\Programming\Python\projects\kesha\main.py"
     if os.path.exists(hardcoded):
         main_py = hardcoded
 
@@ -43,7 +43,7 @@ if not os.path.exists(main_py):
         0,
         "main.py не найден.\n\nПоложите Kesha.exe в папку проекта Кеши\n"
         "или убедитесь, что проект лежит по пути:\n"
-        r"C:\Users\Yusuf\Programming\Python\kesha",
+        r"C:\Users\Yusuf\Programming\Python\projects\kesha",
         "Kesha — ошибка",
         0x10,  # MB_ICONERROR
     )

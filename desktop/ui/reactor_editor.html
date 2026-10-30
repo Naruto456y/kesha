@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Редактор реактора</title>
+<link rel="stylesheet" href="reactor.css">
+<style>
+  :root { --bg:#0B1220; --panel:#121B2E; --line:#22304A; --text:#DDE7F5; --muted:#8193AE; --hl:#00E5FF; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',Roboto,sans-serif; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:16px 24px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:20px; font-weight:800; letter-spacing:.5px; }
+  header .hint { color:var(--muted); font-size:13px; }
+  header .actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+  .wrap { display:grid; grid-template-columns:minmax(320px,1fr) 420px; gap:0; min-height:calc(100vh - 66px); }
+  .stage { display:flex; flex-direction:column; align-items:center; padding:24px 16px; gap:18px; transition:background .4s; }
+  .stage.bg-dark { background:radial-gradient(circle at 50% 40%, #16213A 0%, var(--bg) 70%); }
+  .stage.bg-kesha { background:#4B3FBF; }
+  .stage.bg-light { background:linear-gradient(135deg,#F6FCFF,#DCEBFF); }
+  .stage .reactor { max-width:440px; }
+  .status { font-weight:800; letter-spacing:3px; font-size:15px; transition:color .3s; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .tab { border:2px solid var(--c); color:var(--c); background:transparent; border-radius:999px;
+    padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; transition:.2s; }
+  .tab.on { background:var(--c); color:#0B1220; box-shadow:0 0 18px var(--c); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
+  .side { background:var(--panel); border-left:1px solid var(--line); padding:20px; overflow-y:auto; max-height:calc(100vh - 66px); }
+  .side h2 { font-size:15px; margin:4px 0 12px; display:flex; align-items:center; gap:8px; }
+  .side h2 .dot { width:12px; height:12px; border-radius:50%; background:var(--c); box-shadow:0 0 10px var(--c); }
+  .side section { border-top:1px solid var(--line); padding:14px 0; }
+  .side section:first-of-type { border-top:none; padding-top:0; }
+  .lbl { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+  .color { display:grid; grid-template-columns:110px 44px 1fr; align-items:center; gap:10px; margin-bottom:8px; font-size:14px; }
+  .color input[type=color] { width:44px; height:32px; border:1px solid var(--line); border-radius:8px; background:none; cursor:pointer; padding:2px; }
+  .color input[type=text], textarea { background:#0B1220; color:var(--text); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px; font-family:Consolas,monospace; font-size:13px; width:100%; }
+  .swatches { display:flex; flex-wrap:wrap; gap:6px; }
+  .sw { width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,.15); cursor:pointer; transition:.15s; }
+  .sw:hover { transform:scale(1.15); border-color:#fff; }
+  .slider { display:grid; grid-template-columns:110px 1fr 56px; align-items:center; gap:10px; margin-bottom:8px; font-size:14px; }
+  .slider input { width:100%; accent-color:var(--hl); }
+  .slider output { font-family:Consolas,monospace; font-size:13px; color:var(--muted); text-align:right; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { border:1px solid var(--line); background:#0B1220; color:var(--text); border-radius:999px; padding:6px 12px;
+    font-size:13px; cursor:pointer; transition:.15s; }
+  .chip.on { border-color:var(--c); color:#0B1220; background:var(--c); }
+  .btn { border:1px solid var(--line); background:#1A2740; color:var(--text); border-radius:10px; padding:8px 14px;
+    font-size:13px; font-weight:600; cursor:pointer; transition:.15s; }
+  .btn:hover { border-color:var(--hl); }
+  .btn.primary { background:var(--hl); color:#002833; border-color:var(--hl); }
+  .btn.ghost { background:transparent; }
+  label.toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); cursor:pointer; }
+  select { background:#0B1220; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:#00E5FF; color:#002833;
+    font-weight:700; padding:10px 18px; border-radius:10px; opacity:0; transition:.25s; pointer-events:none; }
+  .toast.show { opacity:1; transform:translateX(-50%); }
+  dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:14px; padding:18px; width:min(560px,92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog textarea { height:260px; margin:10px 0; }
+  @media (max-width:860px) { .wrap { grid-template-columns:1fr; } .side { border-left:none; border-top:1px solid var(--line); max-height:none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚛ Редактор реактора</h1>
+  <span class="hint">Поменяй цвета и анимации, нажми «Копировать конфиг» и пришли его.</span>
+  <div class="actions">
+    <button class="btn primary" id="copy">Копировать конфиг</button>
+    <button class="btn" id="download">Скачать reactor_config.js</button>
+    <button class="btn" id="paste">Вставить конфиг</button>
+    <button class="btn ghost" id="resetAll">Сбросить всё</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage bg-dark" id="stage">
+    <div class="reactor" id="reactor"></div>
+    <div class="status" id="status">ЖДУ</div>
+    <div class="tabs" id="tabs"></div>
+    <div class="row">
+      <button class="btn" id="demo">▶ Демо: «Кеша, какая погода?»</button>
+      <label class="toggle"><input type="checkbox" id="cycle"> автопрогон состояний</label>
+      <label class="toggle">фон
+        <select id="bg">
+          <option value="dark">тёмный</option>
+          <option value="kesha">окно Кеши</option>
+          <option value="light">светлый</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <aside class="side" id="side">
+    <section>
+      <h2><span class="dot"></span><span id="stateTitle">ЖДУ</span></h2>
+      <div class="lbl">Цвета</div>
+      <div id="colors"></div>
+      <div class="lbl" style="margin-top:12px">Быстрый цвет (ставит основной и подбирает остальные)</div>
+      <div class="swatches" id="swatches"></div>
+    </section>
+    <section>
+      <div class="lbl">Движение</div>
+      <div id="sliders"></div>
+    </section>
+    <section>
+      <div class="lbl">Эффекты</div>
+      <div class="chips" id="fx"></div>
+    </section>
+    <section>
+      <div class="lbl">Общее</div>
+      <div class="color"><span>Тёмная основа</span><input type="color" id="darkPick"><input type="text" id="darkHex"></div>
+      <div class="slider"><span>Плавность перехода</span><input type="range" id="fade" min="0" max="2.5" step="0.05"><output id="fadeOut"></output></div>
+      <div class="row" style="justify-content:flex-start;margin-top:8px">
+        <button class="btn" id="fxAll">Эффекты этого состояния — всем</button>
+        <button class="btn ghost" id="resetState">Сбросить это состояние</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<dialog id="pasteDlg">
+  <div class="lbl">Вставь конфиг (JSON или содержимое reactor_config.js)</div>
+  <textarea id="pasteText" spellcheck="false"></textarea>
+  <div class="row" style="justify-content:flex-end">
+    <button class="btn ghost" id="pasteCancel">Отмена</button>
+    <button class="btn primary" id="pasteOk">Применить</button>
+  </div>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script src="reactor_config.js"></script>
+<script src="reactor.js"></script>
+<script>
+const KEY = 'kesha-reactor-editor';
+const COLOR_FIELDS = [['main', 'Основной'], ['accent', 'Блики'], ['core', 'Ядро'], ['glow', 'Свечение']];
+const SLIDERS = [
+  ['glowSize', 'Свечение', 0, 90, 1, 'px'],
+  ['spin', 'Оборот шестерни', 2, 60, 0.5, 'с'],
+  ['pulse', 'Удар ядра', 0.2, 3, 0.05, 'с'],
+  ['pulseScale', 'Сила удара', 1, 1.3, 0.01, '×'],
+];
+const PALETTE = ['#00E5FF', '#3D8BFF', '#2D5BFF', '#7C4DFF', '#B45CFF', '#FF4FD8', '#FF3355', '#FF6B2D',
+  '#FFC400', '#C6FF3D', '#00FFAA', '#00C2A8', '#FFFFFF', '#9FB4C7'];
+
+const $ = id => document.getElementById(id);
+const reactor = $('reactor');
+let cfg = load();
+let cur = 'IDLE';
+let timer = null;
+
+function load() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved) return reactorConfig(saved);
+  } catch (e) {}
+  return reactorConfig();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+function mix(hex, to, t) {
+  const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
+  const c = [16, 8, 0].map(s => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t));
+  return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+const okHex = v => /^#[0-9a-fA-F]{6}$/.test(v);
+
+function chrome() {
+  const s = applyReactorState(reactor, cur, cfg);
+  $('status').textContent = REACTOR_LABELS[cur];
+  $('status').style.color = s.main;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('on', t.dataset.s === cur);
+    t.style.setProperty('--c', cfg.states[t.dataset.s].main);
+  });
+  $('side').style.setProperty('--c', s.main);
+  $('stateTitle').textContent = REACTOR_LABELS[cur] + ' · ' + cur;
+}
+
+function show(state) {
+  cur = state;
+  chrome();
+  renderSide();
+}
+
+function renderTabs() {
+  $('tabs').innerHTML = '';
+  REACTOR_STATES.forEach(st => {
+    const b = document.createElement('button');
+    b.className = 'tab'; b.dataset.s = st; b.textContent = REACTOR_LABELS[st];
+    b.style.setProperty('--c', cfg.states[st].main);
+    b.onclick = () => { stopCycle(); show(st); };
+    $('tabs').appendChild(b);
+  });
+}
+
+function update(field, value) {
+  cfg.states[cur][field] = value;
+  save();
+  chrome();       // поля не перерисовываем — иначе палитра закроется посреди выбора
+}
+
+function renderSide() {
+  const s = cfg.states[cur];
+  $('colors').innerHTML = '';
+  COLOR_FIELDS.forEach(([f, name]) => {
+    const row = document.createElement('div');
+    row.className = 'color';
+    row.innerHTML = `<span>${name}</span><input type="color" value="${s[f]}"><input type="text" value="${s[f]}">`;
+    const [pick, hex] = row.querySelectorAll('input');
+    pick.oninput = () => { hex.value = pick.value.toUpperCase(); update(f, hex.value); };
+    hex.onchange = () => { if (okHex(hex.value)) { pick.value = hex.value; update(f, hex.value.toUpperCase()); } };
+    $('colors').appendChild(row);
+  });
+  $('sliders').innerHTML = '';
+  SLIDERS.forEach(([f, name, min, max, step, unit]) => {
+    const row = document.createElement('div');
+    row.className = 'slider';
+    row.innerHTML = `<span>${name}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${s[f]}"><output>${s[f]} ${unit}</output>`;
+    const inp = row.querySelector('input'), out = row.querySelector('output');
+    inp.oninput = () => { out.textContent = inp.value + ' ' + unit; update(f, parseFloat(inp.value)); };
+    $('sliders').appendChild(row);
+  });
+  $('fx').innerHTML = '';
+  Object.entries(REACTOR_FX).forEach(([fx, name]) => {
+    const c = document.createElement('button');
+    c.className = 'chip' + (s.fx.includes(fx) ? ' on' : '');
+    c.textContent = name;
+    c.onclick = () => {
+      const list = cfg.states[cur].fx;
+      const i = list.indexOf(fx);
+      i >= 0 ? list.splice(i, 1) : list.push(fx);
+      update('fx', list); renderSide();
+    };
+    $('fx').appendChild(c);
+  });
+  $('darkPick').value = cfg.dark; $('darkHex').value = cfg.dark;
+  $('fade').value = cfg.fade; $('fadeOut').textContent = cfg.fade + ' с';
+}
+
+function renderSwatches() {
+  PALETTE.forEach(col => {
+    const d = document.createElement('div');
+    d.className = 'sw'; d.style.background = col; d.title = col;
+    d.onclick = () => {
+      Object.assign(cfg.states[cur], { main: col, accent: mix(col, '#FFFFFF', 0.45),
+        core: mix(col, '#FFFFFF', 0.85), glow: col });
+      save(); renderTabs(); show(cur);
+    };
+    $('swatches').appendChild(d);
+  });
+}
+
+// ---------- демо и автопрогон ----------
+function stopCycle() { clearTimeout(timer); timer = null; $('cycle').checked = false; }
+function runSeq(seq, loop) {
+  let i = 0;
+  const step = () => {
+    const [st, ms] = seq[i];
+    show(st);
+    i++;
+    if (i >= seq.length) { if (!loop) return; i = 0; }
+    timer = setTimeout(step, ms);
+  };
+  clearTimeout(timer); step();
+}
+$('demo').onclick = () => { $('cycle').checked = false;
+  runSeq([['WAKE', 700], ['LISTENING', 1800], ['THINKING', 1200], ['SPEAKING', 2600], ['IDLE', 0]], false); };
+$('cycle').onchange = e => e.target.checked ? runSeq(REACTOR_STATES.map(s => [s, 2500]), true) : stopCycle();
+$('bg').onchange = e => { $('stage').className = 'stage bg-' + e.target.value; };
+
+// ---------- общее ----------
+$('darkPick').oninput = e => { cfg.dark = e.target.value.toUpperCase(); $('darkHex').value = cfg.dark; save(); show(cur); };
+$('darkHex').onchange = e => { if (okHex(e.target.value)) { cfg.dark = e.target.value.toUpperCase(); save(); show(cur); } };
+$('fade').oninput = e => { cfg.fade = parseFloat(e.target.value); $('fadeOut').textContent = cfg.fade + ' с'; save(); chrome(); };
+$('fxAll').onclick = () => {
+  REACTOR_STATES.forEach(s => { cfg.states[s].fx = cfg.states[cur].fx.slice(); });
+  save(); toast('Эффекты скопированы во все состояния');
+};
+$('resetState').onclick = () => {
+  cfg.states[cur] = reactorConfig({}).states[cur]; save(); renderTabs(); show(cur);
+};
+$('resetAll').onclick = () => {
+  if (!confirm('Вернуть стандартные цвета для всех состояний?')) return;
+  cfg = reactorConfig({}); save(); renderTabs(); show(cur);
+};
+
+// ---------- экспорт / импорт ----------
+const configText = () => JSON.stringify(cfg, null, 2);
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1800); }
+function copyText(text) {
+  const fallback = () => {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+  };
+  try {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(fallback);
+  } catch (e) {}
+  fallback();
+  return Promise.resolve();
+}
+$('copy').onclick = () => copyText(configText()).then(() => toast('Конфиг скопирован 📋'));
+$('download').onclick = () => {
+  const body = '// Цвета и анимации реактора — сделано в reactor_editor.html\n' +
+    'window.REACTOR_CONFIG = ' + configText() + ';\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], { type: 'text/javascript' }));
+  a.download = 'reactor_config.js'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Положи файл в desktop/ui/ и перезапусти Кешу');
+};
+$('paste').onclick = () => { $('pasteText').value = ''; $('pasteDlg').showModal(); };
+$('pasteCancel').onclick = () => $('pasteDlg').close();
+$('pasteOk').onclick = () => {
+  const raw = $('pasteText').value;
+  const m = raw.match(/\{[\s\S]*\}/);
+  try {
+    cfg = reactorConfig(JSON.parse(m ? m[0] : raw));
+    save(); renderTabs(); show(cur); $('pasteDlg').close(); toast('Конфиг применён');
+  } catch (e) { alert('Не похоже на конфиг: ' + e.message); }
+};
+
+buildReactor(reactor);
+renderTabs();
+renderSwatches();
+show('IDLE');
+</script>
+</body>
+</html>
