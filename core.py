@@ -146,6 +146,7 @@ def announce(text: str, title: str = "Кеша", speak: bool = True, notify_user
 #  AI HELPER (GigaChat)
 # ============================================================
 try:
+    import hm_compat  # noqa: F401  без VLC help_manager не импортируется
     from help_manager import GigaChat
     _gig = GigaChat()
     AI_AVAILABLE = True

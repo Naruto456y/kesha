@@ -100,6 +100,10 @@ def start_bot():
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
+    if not TELEGRAM_TOKEN:
+        log.warning("TELEGRAM_TOKEN пуст — Telegram-бот не запущен. "
+                    "Возьмите токен у @BotFather и впишите его в .env")
+        return
     if not TELEGRAM_ALLOWED_IDS:
         log.warning("TELEGRAM_ALLOWED_IDS пуст — бот никому не отвечает. "
                     "Напишите боту, он покажет ваш id, и впишите его в .env")

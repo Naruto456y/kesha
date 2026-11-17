@@ -19,6 +19,7 @@ CONFIDENCE = 0.85
 
 def find_play_button():
     """-> (x, y) центра кнопки на экране или None. Ничего не нажимает."""
+    import hm_compat  # noqa: F401  без VLC help_manager не импортируется
     from help_manager import ScreenReader
     for tpl in TEMPLATES:
         with contextlib.redirect_stdout(io.StringIO()):      # ScreenReader пишет в консоль каждую попытку

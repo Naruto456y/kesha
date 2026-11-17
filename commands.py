@@ -47,6 +47,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 try:
+    import hm_compat  # noqa: F401  без VLC help_manager не импортируется
     from help_manager import GigaChat, Manager
     Manager.load_env()
     _gig = GigaChat()
