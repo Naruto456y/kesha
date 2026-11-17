@@ -1,6 +1,6 @@
 requests
 python-dotenv
-help_manager
+pycraft-tools           # даёт модуль help_manager (GigaChat, Manager, ScreenReader)
 AppOpener
 keyboard
 mouse
@@ -19,6 +19,7 @@ websockets
 flask
 pycaw
 comtypes
+pywinauto               # «найди телефон» (features/phone.py)
 PyQt6
 PyQt6-WebEngine
 
