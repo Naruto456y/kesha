@@ -227,8 +227,8 @@ def test_translate_free(monkeypatch, phrase, expected):
     names = _names(monkeypatch)
     assert handle_command(phrase, ai=False) == "ok"
     assert names == ["translate_free"]
-    assert asked[0].endswith(f": {expected}. Без объяснений.")
-    assert ("на русский" in asked[0]) == bool(__import__("re").search("[a-z]", expected))
+    assert asked[0].endswith(f"Текст: {expected}")
+    assert ("на русский язык" in asked[0]) == bool(__import__("re").search("[a-z]", expected))
 
 
 def test_translate_free_ignores_non_translation(monkeypatch):
@@ -335,8 +335,30 @@ def exits(monkeypatch):
 @pytest.mark.parametrize("phrase", ["пока", "кеша пока", "хеша пока", "ну всё пока", "до свидания",
                                     "выключись", "попака", "закройся"])
 def test_bye_quits(exits, phrase):
-    r = handle_command(phrase, source="voice", ai=False)
+    r = handle_command(phrase, source="voice", ai=True)
     assert r == "До свидания! Выключаюсь." and exits == [1]
+
+
+@pytest.mark.parametrize("phrase", ["пока", "выключись", "перезапустись"])
+def test_bye_without_wake_ignored(exits, phrase):
+    """Без «Кеша» (фон, ТВ, случайное слово) выключаться и перезапускаться нельзя."""
+    handle_command(phrase, source="voice", ai=False)
+    assert exits == []
+
+
+def test_close_tab_hotkeys(monkeypatch):
+    import commands
+    sent = []
+    monkeypatch.setattr(commands.keyboard, "send", lambda k: sent.append(k))
+    monkeypatch.setattr(commands.time, "sleep", lambda s: None)
+    assert handle_command("закрой вкладку", source="voice", ai=False) == "Вкладка закрыта"
+    assert sent == ["ctrl+w"]
+    sent.clear()
+    assert "3" in handle_command("закрой три вкладки", source="voice", ai=False)
+    assert sent == ["ctrl+w"] * 3
+    sent.clear()
+    handle_command("верни вкладку", source="voice", ai=False)
+    assert sent == ["ctrl+shift+t"]
 
 
 @pytest.mark.parametrize("phrase", [
@@ -347,7 +369,7 @@ def test_pokа_inside_speech_does_not_quit(exits, phrase):
 
 
 def test_bye_from_telegram_does_not_quit(exits):
-    assert "удалённо" in handle_command("пока", source="telegram", ai=False)
+    assert "удалённо" in handle_command("пока", source="telegram")
     assert exits == []
 
 
@@ -437,7 +459,8 @@ def test_repeat_refuses_risky_and_skips_ai(monkeypatch):
     u._last.clear(); u._last_cmd.clear()
     monkeypatch.setattr(commands.os, "system", lambda *a: 0)
     handle_command("выключи компьютер", source="voice", ai=False)
-    assert "опасная" in handle_command("повтори", source="voice", ai=False)
+    assert "опасная" not in handle_command("повтори", source="voice", ai=False)
+    assert "выключ" not in handle_command("повтори", source="voice", ai=False).lower()
     u._last_cmd.clear()
     monkeypatch.setattr(core, "ai_ask", lambda *a, **k: "ответ GigaChat")
     handle_command("расскажи про динозавров", source="voice")
@@ -598,3 +621,12 @@ def test_lone_star_is_not_enough():
     from features import yamusic
     star = Image.open(yamusic.LOGO).convert("RGB").crop((0, 0, 64, 64))
     assert yamusic.logo_score(_scene((30, 20, 40), (star, (200, 100)))) < yamusic.LOGO_SCORE
+
+
+def test_vad_ends_phrase_over_background_video(monkeypatch):
+    """«Кеша, громче» поверх видео: фон тише голоса — это конец фразы, а не запись до 15 с."""
+    rec = _vad_with(monkeypatch, _frames(-45, 5))
+    start = b"".join(f.tobytes() for f in _frames(-20, 0.6))
+    audio = rec.record(max_wait=1.0, start_audio=start)
+    assert rec.last_info["stopped_by"] == "silence"
+    assert len(audio) / 2 / 16000 < 2.0

@@ -147,6 +147,9 @@ def _remember(source, name, text, response):
     if response:
         _last[source] = response
     if name not in _REPEAT_SKIP:
+        cmd = next((c for c in registry.commands if c["name"] == name), None)
+        if cmd is not None and cmd.get("risky"):
+            return    # опасные не запоминаем: «повтори» берёт последнюю безопасную
         _last_cmd[source] = (name, text)
 
 
@@ -167,7 +170,7 @@ def repeat_last(text):
     name, phrase = prev
     cmd = next((c for c in registry.commands if c["name"] == name), None)
     if cmd is None or cmd.get("risky"):
-        return "Эту команду повторять не буду — она опасная. Скажи её сам."
+        return "Пока нечего повторять."
     return core.handle_command(phrase, source=core.current_source(), ai=False) or "Не вышло повторить."
 
 

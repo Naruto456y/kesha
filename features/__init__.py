@@ -5,7 +5,7 @@
     features.start_background()   # фоновые службы (напоминания)
 """
 
-from . import modes, reminders, notes, stats, rates, agenda, messenger, utilities, yamusic, web, phone, robot  # noqa: F401
+from . import modes, reminders, notes, stats, rates, agenda, messenger, utilities, yamusic, web, phone, robot, obsidian, learning, click_button  # noqa: F401
 
 
 def start_background():

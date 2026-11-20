@@ -118,6 +118,9 @@ def _pick(items, text):
 
 @registry.command(_TODO_ADD, "Добавить задачу", "Заметки", priority=8)
 def add_todo(text):
+    from features import ticktick
+    if (r := ticktick.try_add(text)):
+        return r
     body = _strip(text, _TODO_ADD)
     if not body:
         return "Какую задачу добавить?"
@@ -127,6 +130,9 @@ def add_todo(text):
 
 @registry.command(_NOTE_ADD, "Записать заметку", "Заметки", priority=6)
 def add_note(text):
+    from features import ticktick
+    if (r := ticktick.try_add(text)):
+        return r
     body = _strip(text, _NOTE_ADD)
     if not body:
         return "Что записать?"
@@ -144,6 +150,9 @@ def add_note(text):
 def list_notes(text):
     if re.search(r"\b(?:запиши|добавь|сделай|создай|запомни|новая)\b", text):
         return None            # «запиши в заметки ...» — это add_note
+    from features import ticktick
+    if (r := ticktick.try_list(text)):
+        return r
     kind = _kind_of(text) if "замет" not in text else "note"
     if "что мне сделать" in text or "что нужно сделать" in text:
         kind = "todo"
@@ -160,6 +169,9 @@ def list_notes(text):
     "Отметить задачу выполненной", "Заметки", priority=8,
 )
 def done_todo(text):
+    from features import ticktick
+    if (r := ticktick.try_done(text)):
+        return r
     items = store.items("todo")
     if not items:
         return "Список дел пуст."

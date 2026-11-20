@@ -95,3 +95,61 @@ def test_robot_goes_straight_to_claude(act, monkeypatch, phrase):
 
 def test_robot_hint_in_system_prompt():
     assert "Raspbot" in claude_agent.SYSTEM and "projects-details.md" in claude_agent.SYSTEM
+
+
+# ---------- неизвестная команда -> Клоду ----------
+@pytest.fixture
+def unknown(monkeypatch):
+    """GigaChat не понял; Клод отвечает заданным текстом."""
+    said, tasks, finished = [], [], threading.Event()
+    monkeypatch.setattr(core, "CLAUDE_UNKNOWN", True)
+    monkeypatch.setattr(core, "ai_ask", lambda text, context="": "Не понял.")
+    monkeypatch.setattr(core, "announce", lambda text, title="", speak=True: said.append(text) or finished.set())
+    monkeypatch.setattr(claude_agent, "_run_claude", lambda task: tasks.append(task) or "Развернул окно Кеши.")
+    return said, tasks, finished
+
+
+def test_unknown_app_goes_to_claude(unknown):
+    """«открой своё окно» — такой программы нет: раньше «Не нашёл приложение», теперь делает Клод."""
+    said, tasks, finished = unknown
+    assert handle_command("кеша открой своё окно", "voice") == "Сейчас сделаю."
+    assert finished.wait(5)
+    assert "открой свое окно" in tasks[0].replace("ё", "е") and said == ["Развернул окно Кеши."]
+
+
+def test_gigachat_did_not_understand_goes_to_claude(unknown):
+    said, tasks, finished = unknown
+    assert handle_command("кеша поставь окно блокнота слева", "voice") == "Сейчас сделаю."
+    assert finished.wait(5) and len(tasks) == 1
+
+
+def test_unknown_question_stays_with_gigachat(unknown, monkeypatch):
+    said, tasks, finished = unknown
+    monkeypatch.setattr(core, "ai_ask", lambda text, context="": "Не понял.")
+    assert handle_command("кеша почему небо зелёное в горошек", "voice") != "Сейчас сделаю."
+    assert tasks == []
+
+
+def test_unknown_without_wake_word_never_reaches_claude(unknown):
+    """Фраза без «Кеша» могла быть фоном из видео — Клода не зовём."""
+    said, tasks, finished = unknown
+    assert handle_command("открой своё окно", "voice", ai=False) != "Сейчас сделаю."
+    assert tasks == []
+
+
+def test_unknown_dangerous_refused(unknown):
+    said, tasks, finished = unknown
+    assert handle_command("кеша удали папку с проектами навсегда", "voice") == "Такое не доверю даже Клоду."
+    assert tasks == []
+
+
+def test_unknown_single_word_not_sent(unknown):
+    said, tasks, finished = unknown
+    handle_command("кеша абракадабра", "voice")
+    assert tasks == []
+
+
+def test_model_is_haiku():
+    assert "haiku" in claude_agent.MODEL
+    cmd = claude_agent.build_cmd("x")
+    assert cmd[cmd.index("--model") + 1] == claude_agent.MODEL

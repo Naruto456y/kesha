@@ -368,3 +368,25 @@ def test_send_message_is_exact_only(monkeypatch):
     monkeypatch.setattr(core, "ai_ask", lambda t: "CMD: напиши маме в телеграм привет")
     handle_command("передай мамуле привет", "voice")
     assert sent == []
+
+
+def test_ticktick_routes_to_claude(monkeypatch):
+    from features import ticktick
+    tasks, said = [], []
+    monkeypatch.setattr(ticktick, "ENABLED", True)
+    monkeypatch.setattr(ticktick, "_run_claude", lambda task: tasks.append(task) or "**Две** задачи")
+    monkeypatch.setattr(ticktick, "announce", lambda text, **kw: said.append(text))
+    assert handle_command("список дел", "t") == "Смотрю TickTick."
+    ticktick._busy.wait(0.01)
+    import time
+    for _ in range(50):
+        if said:
+            break
+        time.sleep(0.05)
+    assert said == ["Две задачи"] and "невыполненные" in tasks[0]
+    assert handle_command("добавь задачу сделать уроки", "t") == "Записываю в TickTick."
+    for _ in range(50):
+        if len(tasks) == 2:
+            break
+        time.sleep(0.05)
+    assert "Входящие" in tasks[1] and "сделать уроки" in tasks[1]
