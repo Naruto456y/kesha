@@ -149,8 +149,13 @@ try:
     from help_manager import GigaChat
     _gig = GigaChat()
     AI_AVAILABLE = True
+except ImportError:
+    print("[core] help_manager (pycraft-tools) не установлен — ИИ-ответы отключены, "
+          "остальное работает. Поставить: pip install pycraft-tools")
+    _gig = None
+    AI_AVAILABLE = False
 except Exception as e:
-    print(f"[core] GigaChat недоступен: {e}")
+    print(f"[core] GigaChat недоступен ({e}) — ИИ-ответы отключены, остальное работает")
     _gig = None
     AI_AVAILABLE = False
 

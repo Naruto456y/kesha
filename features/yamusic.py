@@ -19,7 +19,11 @@ CONFIDENCE = 0.85
 
 def find_play_button():
     """-> (x, y) центра кнопки на экране или None. Ничего не нажимает."""
-    from help_manager import ScreenReader
+    try:
+        from help_manager import ScreenReader      # нужен pycraft-tools[vision] (python main.py --full)
+    except Exception as e:
+        print(f"[yamusic] поиск кнопки Play отключён: нет ScreenReader ({e}). Поставить: python main.py --full")
+        return None
     for tpl in TEMPLATES:
         with contextlib.redirect_stdout(io.StringIO()):      # ScreenReader пишет в консоль каждую попытку
             pos = ScreenReader.find_image(str(tpl), CONFIDENCE)

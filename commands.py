@@ -51,8 +51,13 @@ try:
     Manager.load_env()
     _gig = GigaChat()
     GIGACHAT_AVAILABLE = True
+except ImportError:
+    print("[commands] help_manager (pycraft-tools) не установлен — GigaChat отключён, "
+          "остальные команды работают. Поставить: pip install pycraft-tools")
+    _gig = None
+    GIGACHAT_AVAILABLE = False
 except Exception as e:
-    print(f"[commands] GigaChat недоступен: {e}")
+    print(f"[commands] GigaChat недоступен ({e}) — ИИ-ответы отключены, остальное работает")
     _gig = None
     GIGACHAT_AVAILABLE = False
 
