@@ -29,10 +29,14 @@
     <div class="reactor" id="reactor">
     </div>
     <div class="controls">
-      <button class="ctrl-btn" id="btnListen" onclick="toggleListening()" title="Ctrl+Space">СЛУШАТЬ</button>
-      <button class="ctrl-btn" id="btnSilent" onclick="toggleSilent()" title="Тихий режим: только текст">ГОЛОС ВКЛ</button>
-      <button class="ctrl-btn" id="btnTheme" onclick="toggleTheme()" title="Тема оформления">СВЕТЛАЯ</button>
-      <button class="ctrl-btn" id="btnReactor" onclick="openReactorEditor()" title="Цвета и анимации реактора">РЕАКТОР</button>
+      <button class="ctrl-btn" id="btnFloat" onclick="toggleFloat()" title="Скрыть / показать маленький летающий реактор">СКРЫТЬ</button>
+      <button class="ctrl-btn" id="btnMic" onclick="toggleMic()" title="Микрофон включён (нажми — Кеша перестанет слышать)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/><line class="mic-slash" x1="3" y1="3" x2="21" y2="21" stroke="#FF2840" stroke-width="2.6"/></svg>
+      </button>
+      <button class="ctrl-btn" id="btnSilent" onclick="toggleSilent()" title="Звук включён (нажми — тихий режим: Кеша молча выполняет команды)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3,9 7,9 12,5 12,19 7,15 3,15"/><path class="spk-wave" d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/><line class="mic-slash" x1="3" y1="3" x2="21" y2="21" stroke="#FF2840" stroke-width="2.6"/></svg>
+      </button>
+      <button class="ctrl-btn" id="btnDesign" onclick="openDesign()" title="Сайт-студия: дизайн интерфейса и реактор">ДИЗАЙН</button>
     </div>
     <div class="status-bar" id="statusBar">ЖДУ</div>
   </main>
@@ -50,6 +54,7 @@
 <script src="qwebchannel.js"></script>
 <script src="reactor_config.js"></script>
 <script src="reactor.js"></script>
+<script src="design.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

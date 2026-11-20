@@ -29,11 +29,9 @@
 .hex-blink { animation:blink 2s ease-in-out infinite; }
 .hex-blink:nth-child(odd) { animation-delay:0.3s; }
 .hex-blink:nth-child(3n) { animation-delay:0.6s; }
-@keyframes blink { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.6); } }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.6; } }   /* opacity дёшево; filter на каждом шестиграннике перерисовывал всё */
 
-/* вспышка при команде (лучи из script.js) */
-.reactor.listening svg { animation:reactorPulse 1.2s ease-in-out infinite; }
-@keyframes reactorPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.08); } }
+/* «пульс» при команде теперь часть движка reactor.js (одна анимация вместо CSS-конфликта с transform) */
 
 /* ---------- эффекты: класс fx-<имя> на .reactor, появляются и гаснут плавно ---------- */
 .fx-layer { opacity:0; transition:opacity var(--r-fade) ease; pointer-events:none; }

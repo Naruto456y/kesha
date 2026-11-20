@@ -1,7 +1,10 @@
 /* Логика десктоп-интерфейса Кеша */
 let bridge = null;
 
+const PREVIEW = /[?&]preview=1/.test(location.search);
+
 function initBridge() {
+  if (PREVIEW) return;
   if (typeof qt === 'undefined' || !qt.webChannelTransport) {
     console.warn('QWebChannel недоступен');
     return;
@@ -26,12 +29,67 @@ function initBridge() {
   });
 }
 
+const CMD_ITEMS = {};   // name -> {id, patterns, changed, ...} из реестра
+
+/* Окно паттернов команды */
+function openPatterns(name) {
+  const item = CMD_ITEMS[name];
+  if (!item) return;
+  closePatterns();
+  const ov = document.createElement('div');
+  ov.className = 'pat-overlay';
+  ov.id = 'patOverlay';
+  ov.innerHTML =
+    '<div class="pat-modal">' +
+    '<div class="pat-title">Паттерны: ' + item.id + '</div>' +
+    '<div class="pat-hint">Одна фраза на строку. Нижний регистр, без знаков. ' +
+    (item.risky ? 'Команда опасная: только точная фраза.' : '') + '</div>' +
+    '<textarea id="patText" spellcheck="false"></textarea>' +
+    '<div class="pat-btns">' +
+    '<button id="patSave">Сохранить</button>' +
+    '<button id="patReset">Сбросить</button>' +
+    '<button id="patClose">Закрыть</button></div>' +
+    '<div class="pat-status" id="patStatus"></div></div>';
+  document.body.appendChild(ov);
+  const ta = document.getElementById('patText');
+  ta.value = item.patterns.join('\n');
+  ta.focus();
+  const status = t => { document.getElementById('patStatus').textContent = t; };
+  const save = (patterns) => {
+    if (!bridge || !bridge.save_patterns) { status('Нет связи с Python'); return; }
+    bridge.save_patterns(item.id, JSON.stringify(patterns), function (ok) {
+      if (!ok) { status('Не удалось сохранить'); return; }
+      bridge.get_commands(function (json) {
+        try { loadRegistryCommands(JSON.parse(json)); } catch (e) { console.warn(e); }
+        const fresh = Object.values(CMD_ITEMS).find(i => i.id === item.id);
+        if (fresh) { item.patterns = fresh.patterns; ta.value = fresh.patterns.join('\n'); }
+        status('Сохранено ✓ (работает сразу)');
+      });
+    });
+  };
+  document.getElementById('patSave').onclick = () =>
+    save(ta.value.split('\n').map(s => s.trim()).filter(Boolean));
+  document.getElementById('patReset').onclick = () => save(null);
+  document.getElementById('patClose').onclick = closePatterns;
+  ov.addEventListener('mousedown', e => { if (e.target === ov) closePatterns(); });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePatterns();
+    if (e.key === 'Enter' && e.ctrlKey) document.getElementById('patSave').click();
+  });
+}
+function closePatterns() {
+  const o = document.getElementById('patOverlay');
+  if (o) o.remove();
+}
+
 /* Команды из реестра Python (заменяют статичный список ниже) */
 function loadRegistryCommands(groups) {
   if (!Array.isArray(groups) || !groups.length) return;
   for (const k of Object.keys(COMMAND_CATEGORIES)) delete COMMAND_CATEGORIES[k];
+  for (const k of Object.keys(CMD_ITEMS)) delete CMD_ITEMS[k];
   for (const g of groups) {
     COMMAND_CATEGORIES[g.category] = g.items.map(i => i.name + ' - ' + i.desc);
+    g.items.forEach(i => { CMD_ITEMS[i.name] = i; });
   }
   const search = document.getElementById('cmdSearch');
   renderCommands(search ? search.value : '');
@@ -147,12 +205,20 @@ function renderCommands(filterText) {
       html += '<div class="cmd-item" data-cmd="' + name.replace(/"/g, '&quot;') + '">' +
               '<span class="cmd-name">' + name + '</span>' +
               (desc ? '<span class="cmd-desc">- ' + desc + '</span>' : '') +
+              (CMD_ITEMS[name] ? '<button class="cmd-pat' + (CMD_ITEMS[name].changed ? ' changed' : '') +
+                '" title="Редактировать фразы-паттерны">паттерны</button>' : '') +
               '</div>';
       total++;
     }
   }
   if (!total) html = '<div class="cmd-empty">Ничего не найдено</div>';
   container.innerHTML = html;
+  container.querySelectorAll('.cmd-pat').forEach(b => {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openPatterns(this.parentElement.dataset.cmd);
+    });
+  });
   container.querySelectorAll('.cmd-item').forEach(el => {
     el.addEventListener('click', function () {
       document.querySelectorAll('.cmd-item.active').forEach(e => e.classList.remove('active'));
@@ -226,10 +292,7 @@ function spawnCenterBurst(color) {
 }
 
 function pulseReactor(ms) {
-  ms = ms || 1000;
-  const r = document.getElementById('reactor');
-  r.classList.add('listening');
-  setTimeout(() => r.classList.remove('listening'), ms);
+  pulseReactorEngine(document.getElementById('reactor'), ms);
 }
 
 /* ============================================================
@@ -311,19 +374,21 @@ function addMessage(text, sender, source) {
    СОСТОЯНИЯ РЕАКТОРА (state_manager -> bridge -> сюда)
    ============================================================ */
 // цвета и анимации — reactor.js / reactor_config.js (редактор: reactor_editor.html)
-const REACTOR_CFG = reactorConfig();
+let REACTOR_CFG = reactorConfig();
+let curState = 'IDLE', curText = '';
 
 function onState(state, text) {
   if (!REACTOR_LABELS[state]) state = 'IDLE';
+  curState = state; curText = text;
   const r = document.getElementById('reactor');
   const s = document.getElementById('statusBar');
-  const b = document.getElementById('btnListen');
+  if (r && !!uiSettings.mic_muted !== !!r._muted) r._muted = !!uiSettings.mic_muted;
   const view = r ? applyReactorState(r, state, REACTOR_CFG) : REACTOR_CFG.states[state];
   if (s) {
     s.textContent = REACTOR_LABELS[state] + (state === 'ERROR' && text ? ': ' + text : '');
-    s.style.color = view.main;
+    s.style.color = uiSettings.mic_muted ? '#FF2840' : view.main;
+    if (uiSettings.mic_muted) s.textContent = 'МИКРОФОН ВЫКЛ';
   }
-  if (b) b.classList.toggle('active', state === 'LISTENING');
 }
 
 /* ============================================================
@@ -332,16 +397,31 @@ function onState(state, text) {
 const uiSettings = {};
 function onSetting(key, value) {
   uiSettings[key] = value;
-  if (key === 'theme') {
-    document.body.classList.toggle('theme-light', value === 'light');
-    const t = document.getElementById('btnTheme');
-    if (t) t.textContent = value === 'light' ? 'ТЁМНАЯ' : 'СВЕТЛАЯ';
+  if (key === 'design' && !PREVIEW) {
+    let d = value; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    if (d) applyDesign(d);
+  }
+  if (key === 'reactor' && value && !PREVIEW) {
+    REACTOR_CFG = reactorConfig(value);
+    onState(curState, curText);
+  }
+  if (key === 'floating_icon') {
+    const f = document.getElementById('btnFloat');
+    if (f) f.textContent = value ? 'СКРЫТЬ' : 'ПОКАЗАТЬ';
+  }
+  if (key === 'mic_muted') {
+    const m = document.getElementById('btnMic');
+    if (m) {
+      m.classList.toggle('active', !!value);
+      if (typeof curState !== 'undefined') onState(curState, curText);
+      m.title = value ? 'Микрофон выключен: Кеша не слышит (нажми — включить)' : 'Микрофон включён (нажми — Кеша перестанет слышать)';
+    }
   }
   if (key === 'silent') {
     const m = document.getElementById('btnSilent');
     if (m) {
       m.classList.toggle('active', !!value);
-      m.textContent = value ? 'ГОЛОС ВЫКЛ' : 'ГОЛОС ВКЛ';
+      m.title = value ? 'Тихий режим: Кеша молча выполняет команды (нажми — включить звук)' : 'Звук включён (нажми — тихий режим)';
     }
   }
 }
@@ -351,25 +431,13 @@ function setSetting(key, value) {
   else onSetting(key, value);
 }
 
-function openReactorEditor() {
-  if (bridge && bridge.open_reactor_editor) bridge.open_reactor_editor();
-  else window.open('reactor_editor.html', '_blank');
+function openDesign() {
+  if (bridge && bridge.open_design) bridge.open_design();
+  else window.open('studio.html', '_blank');
 }
-
-function toggleTheme() { setSetting('theme', uiSettings.theme === 'light' ? 'dark' : 'light'); }
+function toggleFloat() { setSetting('floating_icon', !uiSettings.floating_icon); }
+function toggleMic() { setSetting('mic_muted', !uiSettings.mic_muted); }
 function toggleSilent() { setSetting('silent', !uiSettings.silent); }
-
-/* ============================================================
-   КНОПКА "СЛУШАТЬ" — как Ctrl+Space: микрофон без слова «Кеша»
-   ============================================================ */
-function toggleListening() {
-  if (bridge && bridge.listen_now) {
-    bridge.listen_now();
-  } else {
-    onState('LISTENING', '');
-    setTimeout(() => onState('IDLE', ''), 1500);
-  }
-}
 
 /* ============================================================
    ИНИЦИАЛИЗАЦИЯ
@@ -384,5 +452,8 @@ window.addEventListener('load', function () {
   if (search) search.addEventListener('input', () => renderCommands(search.value));
   const btn = document.getElementById('btnSend');
   if (btn) btn.addEventListener('click', sendFromInput);
-  setTimeout(initBridge, 200);
+  window.addEventListener('message', e => {
+    if (PREVIEW && e.data && e.data.kesha_design) applyDesign(e.data.kesha_design);
+  });
+  if (!PREVIEW) setTimeout(initBridge, 200);
 });

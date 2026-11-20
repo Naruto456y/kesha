@@ -64,11 +64,9 @@
 <body>
 <header>
   <h1>⚛ Редактор реактора</h1>
-  <span class="hint">Поменяй цвета и анимации, нажми «Копировать конфиг» и пришли его.</span>
+  <span class="hint">Меняй цвета и анимации — всё сохраняется в Кешу само и сразу видно в её окне.</span>
   <div class="actions">
-    <button class="btn primary" id="copy">Копировать конфиг</button>
-    <button class="btn" id="download">Скачать reactor_config.js</button>
-    <button class="btn" id="paste">Вставить конфиг</button>
+    <button class="btn primary" id="saveNow">Сохранить</button>
     <button class="btn ghost" id="resetAll">Сбросить всё</button>
   </div>
 </header>
@@ -119,14 +117,6 @@
   </aside>
 </div>
 
-<dialog id="pasteDlg">
-  <div class="lbl">Вставь конфиг (JSON или содержимое reactor_config.js)</div>
-  <textarea id="pasteText" spellcheck="false"></textarea>
-  <div class="row" style="justify-content:flex-end">
-    <button class="btn ghost" id="pasteCancel">Отмена</button>
-    <button class="btn primary" id="pasteOk">Применить</button>
-  </div>
-</dialog>
 <div class="toast" id="toast"></div>
 
 <script src="reactor_config.js"></script>
@@ -156,7 +146,18 @@ function load() {
   } catch (e) {}
   return reactorConfig();
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+let _saveT = null;
+function saveToKesha(loud) {
+  fetch('/api/set', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key: 'reactor', value: cfg})})
+    .then(r => { if (!r.ok) throw new Error(r.status); toast('Сохранено ✔ — уже в окне Кеши'); })
+    .catch(() => toast('Не сохранилось: Кеша не запущена или сайт открыт не из неё'));
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
+  clearTimeout(_saveT);      // автосохранение после паузы, чтобы ползунки не заваливали запросами
+  _saveT = setTimeout(saveToKesha, 600);
+}
 
 function mix(hex, to, t) {
   const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
@@ -288,42 +289,15 @@ $('resetAll').onclick = () => {
 // ---------- экспорт / импорт ----------
 const configText = () => JSON.stringify(cfg, null, 2);
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1800); }
-function copyText(text) {
-  const fallback = () => {
-    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
-    ta.select(); document.execCommand('copy'); ta.remove();
-  };
-  try {
-    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(fallback);
-  } catch (e) {}
-  fallback();
-  return Promise.resolve();
-}
-$('copy').onclick = () => copyText(configText()).then(() => toast('Конфиг скопирован 📋'));
-$('download').onclick = () => {
-  const body = '// Цвета и анимации реактора — сделано в reactor_editor.html\n' +
-    'window.REACTOR_CONFIG = ' + configText() + ';\n';
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([body], { type: 'text/javascript' }));
-  a.download = 'reactor_config.js'; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast('Положи файл в desktop/ui/ и перезапусти Кешу');
-};
-$('paste').onclick = () => { $('pasteText').value = ''; $('pasteDlg').showModal(); };
-$('pasteCancel').onclick = () => $('pasteDlg').close();
-$('pasteOk').onclick = () => {
-  const raw = $('pasteText').value;
-  const m = raw.match(/\{[\s\S]*\}/);
-  try {
-    cfg = reactorConfig(JSON.parse(m ? m[0] : raw));
-    save(); renderTabs(); show(cur); $('pasteDlg').close(); toast('Конфиг применён');
-  } catch (e) { alert('Не похоже на конфиг: ' + e.message); }
-};
+$('saveNow').onclick = () => saveToKesha(true);
 
 buildReactor(reactor);
 renderTabs();
 renderSwatches();
 show('IDLE');
+fetch('/api/settings').then(r => r.json()).then(j => {
+  if (j.reactor) { cfg = reactorConfig(j.reactor); renderTabs(); show(cur); }
+}).catch(() => {});
 </script>
 </body>
 </html>

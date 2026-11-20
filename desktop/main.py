@@ -18,8 +18,10 @@ class KeshaWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(DESKTOP_TITLE)
         self.resize(DESKTOP_WIDTH, DESKTOP_HEIGHT)
-        if os.path.exists(ICON_PATH):
-            try: self.setWindowIcon(QIcon(ICON_PATH))
+        ico = Path(ICON_PATH).with_name("Kesha.ico")         # .ico чётче на панели задач
+        icon = str(ico) if ico.exists() else ICON_PATH
+        if os.path.exists(icon):
+            try: self.setWindowIcon(QIcon(icon))
             except Exception: pass
         self.view = QWebEngineView()
         self.setCentralWidget(self.view)
@@ -41,15 +43,16 @@ class KeshaWindow(QMainWindow):
 
     def _on_loaded(self, ok):
         if ok:
-            self._js("onSetting", "theme", settings.get("theme"))
             import state_manager
             self._js("onState", state_manager.get_state().value, "")
 
 
-def start_desktop():
+def start_desktop(minimized=False):
     app = QApplication(sys.argv)
+    from .studio import start as start_studio
+    start_studio()                      # сайт-студия доступна сразу
     w = KeshaWindow()
-    w.show()
+    w.showMinimized() if minimized else w.show()    # автозагрузка — свёрнутой
     floating = None
     try:
         from .floating import FloatingReactor

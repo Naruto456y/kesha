@@ -115,7 +115,7 @@ function _reactorSVG() {
   </g>
   <g class="fx-layer fx-sparks">${sparks}</g>
   <circle class="pulse-core" cx="200" cy="200" r="55" fill="url(#coreGrad)" filter="url(#softGlow)"/>
-  <circle cx="185" cy="185" r="18" fill="url(#coreInner)" opacity="0.9"/>
+  <circle class="pulse-core" cx="185" cy="185" r="18" fill="url(#coreInner)" opacity="0.9"/>
 </svg>`;
 }
 
@@ -139,7 +139,8 @@ function _startEngine(el) {
                  [q('spin-o1'), 6], [q('spin-o2'), -4], [q('spin-o3'), 3]];
   const angles = spins.map(() => 0);
   const core = q('pulse-core'), glow = q('pulse-glow');
-  const st = el._reactor = { cur: null, target: null, ease: 0.4 };
+  const st = el._reactor = { cur: null, target: null, ease: 0.4, boostUntil: 0 };
+  let boost = 0, boostPh = 0;
   let last = performance.now(), pulsePh = 0, breathPh = 0, flickT = 0, flickV = 1;
   const wave = ph => 0.5 - 0.5 * Math.cos(2 * Math.PI * ph);
 
@@ -158,10 +159,13 @@ function _startEngine(el) {
       });
       pulsePh = (pulsePh + c.pulse * dt) % 1;
       breathPh = (breathPh + c.pulse / 1.4 * dt) % 1;
-      const coreScale = 1 + c.pulseAmp * wave(pulsePh);
+      // микрофон выключен: резкие «тык-тык» вместо плавного дыхания
+      const coreScale = 1 + c.pulseAmp * (el._muted ? Math.exp(-pulsePh * 5) : wave(pulsePh));
       core.forEach(e => { e.style.transform = 'scale(' + coreScale.toFixed(4) + ')'; });
       glow.forEach(e => { e.style.opacity = (0.75 + 0.25 * wave(pulsePh / 1.33)).toFixed(3); });
-      svg.style.transform = 'scale(' + (1 + c.breath * wave(breathPh)).toFixed(4) + ')';
+      boost += ((now < st.boostUntil ? 1 : 0) - boost) * (1 - Math.exp(-dt / 0.15));   // плавно вкл/выкл
+      boostPh = (boostPh + dt / 1.2) % 1;
+      svg.style.transform = 'scale(' + (1 + c.breath * wave(breathPh) + 0.08 * boost * wave(boostPh)).toFixed(4) + ')';
       flickT -= dt;
       if (flickT <= 0) {               // мерцание ошибки: случайные короткие провалы яркости
         flickT = 0.05 + Math.random() * 0.25;
@@ -181,7 +185,12 @@ function buildReactor(el) {
 
 function applyReactorState(el, state, cfg) {
   cfg = cfg || reactorConfig();
-  const s = cfg.states[state] || cfg.states.IDLE;
+  el._lastState = [state, cfg];
+  let s = cfg.states[state] || cfg.states.IDLE;
+  if (el._muted) {   // красный, ядро не крутится, медленные удары
+    s = Object.assign({}, s, { main: '#FF2840', accent: '#FF5060', core: '#FF2840', glow: '#FF2840',
+      pulse: 0.7, pulseScale: 1.06, spin: 60, fx: [] });
+  }
   const st = el.style;
   st.setProperty('--r-main', s.main);
   st.setProperty('--r-accent', s.accent);
@@ -196,4 +205,15 @@ function applyReactorState(el, state, cfg) {
   }
   Object.keys(REACTOR_FX).forEach(fx => el.classList.toggle('fx-' + fx, s.fx.indexOf(fx) >= 0));
   return s;
+}
+
+// микрофон выключен: реактор краснеет и замирает (только «тык-тык» ядра)
+function setReactorMuted(el, muted) {
+  el._muted = !!muted;
+  if (el._lastState) applyReactorState(el, el._lastState[0], el._lastState[1]);
+}
+
+// короткий пульс: повторный вызов только продлевает его, а не запускает вторую анимацию
+function pulseReactorEngine(el, ms) {
+  if (el._reactor) el._reactor.boostUntil = performance.now() + (ms || 1000);
 }

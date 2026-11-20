@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Студия дизайна Кеши</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; background:#0b1020; color:#DFFFFF; font-family:'Segoe UI',Roboto,sans-serif; }
+body { display:flex; flex-direction:column; }
+header { display:flex; align-items:center; gap:18px; padding:10px 20px; background:#10172e; border-bottom:1px solid #1d2a50; }
+header h1 { font-size:18px; color:#7FFFFF; white-space:nowrap; }
+nav { display:flex; gap:6px; }
+nav button { padding:9px 20px; border-radius:50px; border:2px solid #1d2a50; background:none; color:#9FB4C7;
+  font-weight:700; font-size:14px; cursor:pointer; }
+nav button:hover { border-color:#00E5FF; color:#00E5FF; }
+nav button.on { background:#00E5FF; border-color:#00E5FF; color:#003344; }
+main { flex:1; position:relative; }
+iframe { position:absolute; inset:0; width:100%; height:100%; border:0; display:none; }
+iframe.on { display:block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎨 Студия дизайна Кеши</h1>
+  <nav id="tabs"></nav>
+</header>
+<main id="pages"></main>
+<script>
+const TABS = [
+  ['interface', 'Интерфейс', 'design.html'],
+  ['reactor', 'Реактор', 'reactor_editor.html'],
+];
+const nav = document.getElementById('tabs'), pages = document.getElementById('pages');
+TABS.forEach(([id, title, src]) => {
+  const b = document.createElement('button'); b.textContent = title; b.dataset.id = id;
+  b.onclick = () => open(id); nav.appendChild(b);
+  const f = document.createElement('iframe'); f.dataset.id = id; f.dataset.src = src; pages.appendChild(f);
+});
+function open(id) {
+  if (!TABS.some(t => t[0] === id)) id = TABS[0][0];
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+  document.querySelectorAll('iframe').forEach(f => {
+    const on = f.dataset.id === id;
+    if (on && !f.src) f.src = f.dataset.src;
+    f.classList.toggle('on', on);
+  });
+  history.replaceState(null, '', '#' + id);
+}
+open(location.hash.slice(1));
+</script>
+</body>
+</html>

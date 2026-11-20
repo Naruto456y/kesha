@@ -76,23 +76,36 @@ class Bridge(QObject):
             print("[bridge] голос недоступен:", e)
 
     @pyqtSlot()
-    def open_reactor_editor(self):
-        """Кнопка «РЕАКТОР»: редактор цветов в браузере."""
-        import os
-        from pathlib import Path
-        os.startfile(str(Path(__file__).parent / "ui" / "reactor_editor.html"))
+    def open_design(self):
+        """Кнопка «ДИЗАЙН»: сайт-студия (интерфейс + реактор) в обычном браузере."""
+        from .studio import open_in_browser
+        open_in_browser()
 
     @pyqtSlot(result=str)
     def get_commands(self):
         """Команды из реестра для правой панели: [{category, items: [{name, desc}]}]."""
         from core import registry
+        registry.ensure_overrides()
         cats = {}
         for c in registry.commands:
             cats.setdefault(c["category"], []).append(
-                {"name": c["patterns"][0] if c["patterns"] else c["name"],
-                 "desc": c["description"], "risky": bool(c.get("risky"))})
+                {"id": c["name"],
+                 "name": c["patterns"][0] if c["patterns"] else c["name"],
+                 "desc": c["description"], "risky": bool(c.get("risky")),
+                 "patterns": c["patterns"],
+                 "changed": c["patterns"] != c.get("default_patterns", c["patterns"])})
         return json.dumps([{"category": k, "items": v} for k, v in cats.items()],
                           ensure_ascii=False)
+
+    @pyqtSlot(str, str, result=bool)
+    def save_patterns(self, cmd_id, patterns_json):
+        """Окно паттернов: сохранить список фраз команды (пустой JSON null — сброс)."""
+        from core import registry
+        try:
+            return registry.set_patterns(cmd_id, json.loads(patterns_json))
+        except Exception as e:
+            print("[bridge] save_patterns:", e)
+            return False
 
     @pyqtSlot(result=str)
     def get_settings(self):

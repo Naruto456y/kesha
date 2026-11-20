@@ -4,7 +4,7 @@
   • цвет = состояние Кеши (ждёт / слушает / думает / говорит / ошибка);
   • клик — слушать без слова «Кеша» (или выключить звенящий будильник);
   • двойной клик — показать главное окно;
-  • правая кнопка — меню (тихий режим, тема, скрыть значок, выход);
+  • правая кнопка — меню (микрофон вкл/выкл, тихий режим, скрыть значок, выход);
   • перетаскивается мышью, место запоминается.
 """
 import json
@@ -109,6 +109,10 @@ class FloatingReactor(QWidget):
         self.update()
 
     def _tick(self):
+        if settings.get("mic_muted"):      # ядро не крутится, только «тык-тык»
+            self.phase = (self.phase + 0.06) % (2 * math.pi * 100)
+            self.update()
+            return
         speed = {"LISTENING": 0.16, "THINKING": 0.22, "SPEAKING": 0.12, "WAKE": 0.2}.get(self.state, 0.05)
         self.phase = (self.phase + speed) % (2 * math.pi * 100)
         self.update()
@@ -117,10 +121,13 @@ class FloatingReactor(QWidget):
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        c = QColor(STATE_COLORS[self.state])
+        muted = bool(settings.get("mic_muted"))
+        c = QColor("#FF2840" if muted else STATE_COLORS[self.state])
         center = QPointF(SIZE / 2, SIZE / 2)
-        pulse = 0.5 + 0.5 * math.sin(self.phase)
-        light = settings.get("theme") == "light"
+        if muted:   # резкий удар раз в ~2 с, потом спад
+            pulse = math.exp(-((self.phase / (2 * math.pi)) % 1) * 5)
+        else:
+            pulse = 0.5 + 0.5 * math.sin(self.phase)
 
         glow = QRadialGradient(center, SIZE / 2)
         g = QColor(c)
@@ -132,7 +139,7 @@ class FloatingReactor(QWidget):
         p.setBrush(QBrush(glow))
         p.drawEllipse(center, SIZE / 2, SIZE / 2)
 
-        p.setBrush(QColor("#EAF6FF" if light else "#0A2432"))
+        p.setBrush(QColor("#0A2432"))
         p.drawEllipse(center, SIZE * 0.33, SIZE * 0.33)
 
         pen = QPen(c, 3)
@@ -141,7 +148,7 @@ class FloatingReactor(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.save()
         p.translate(center)
-        p.rotate(math.degrees(self.phase) % 360)
+        p.rotate(math.degrees(self.phase) % 360 if not muted else math.degrees(self.phase) / 6 % 360)
         p.drawEllipse(QPointF(0, 0), SIZE * 0.36, SIZE * 0.36)
         p.restore()
 
@@ -150,7 +157,7 @@ class FloatingReactor(QWidget):
         core.setColorAt(1.0, c)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(core))
-        r = SIZE * (0.16 + 0.03 * pulse)
+        r = SIZE * (0.16 + (0.012 if muted else 0.03) * pulse)
         p.drawEllipse(center, r, r)
         p.end()
 
@@ -183,11 +190,12 @@ class FloatingReactor(QWidget):
         listen = QAction("Слушать (Ctrl+Space)", menu, triggered=lambda *_: self._listen())
         silent = QAction("Тихий режим", menu, checkable=True, checked=bool(settings.get("silent")),
                          triggered=lambda on: settings.set("silent", on))
-        light = QAction("Светлая тема", menu, checkable=True, checked=settings.get("theme") == "light",
-                        triggered=lambda on: settings.set("theme", "light" if on else "dark"))
+        muted = bool(settings.get("mic_muted"))
+        mic = QAction("Включить микрофон" if muted else "Выключить микрофон", menu,
+                      triggered=lambda *_: settings.set("mic_muted", not muted))
         hide = QAction("Скрыть значок", menu, triggered=lambda *_: settings.set("floating_icon", False))
         quit_ = QAction("Выход", menu, triggered=lambda *_: QApplication.quit())
-        for a in (show, listen, silent, light, hide):
+        for a in (show, listen, mic, silent, hide):
             menu.addAction(a)
         menu.addSeparator()
         menu.addAction(quit_)

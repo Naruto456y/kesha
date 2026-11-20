@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Дизайн Кеши</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; background:#0b1020; color:#DFFFFF; font-family:'Segoe UI',Roboto,sans-serif; }
+.wrap { display:grid; grid-template-columns:320px 1fr; height:100vh; }
+.side { padding:18px; overflow-y:auto; background:#10172e; }
+h1 { font-size:20px; margin-bottom:14px; color:#7FFFFF; }
+.row { margin-bottom:14px; }
+.row label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px; color:#BFFFFF; }
+.row input[type=range] { width:100%; accent-color:#00E5FF; }
+.row input[type=color] { width:100%; height:34px; border:2px solid #1d2a50; border-radius:8px; background:none; cursor:pointer; }
+.btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; }
+button { padding:10px 16px; border-radius:50px; border:2px solid #00E5FF; background:rgba(0,229,255,0.12);
+  color:#00E5FF; font-weight:700; font-size:13px; cursor:pointer; }
+button:hover { background:#00E5FF; color:#003344; }
+button.primary { background:#00E5FF; color:#003344; }
+.msg { margin-top:12px; font-size:13px; color:#7FFFFF; min-height:18px; }
+iframe { width:100%; height:100%; border:0; background:#000; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="side">
+    <h1>Редактор дизайна</h1>
+    <div class="row"><label>Фон окна</label><input type="color" id="bg"></div>
+    <div class="row"><label>Неон (акцент)</label><input type="color" id="accent"></div>
+    <div class="row"><label>Подложка панелей</label><input type="color" id="panel"></div>
+    <div class="row"><label>Скругление <span id="v-radius"></span></label><input type="range" id="radius" min="0" max="40" step="1"></div>
+    <div class="row"><label>Заголовок <span id="v-titleSize"></span></label><input type="range" id="titleSize" min="24" max="60" step="1"></div>
+    <div class="row"><label>Ширина боковых панелей <span id="v-sideWidth"></span></label><input type="range" id="sideWidth" min="0.8" max="1.8" step="0.05"></div>
+    <div class="btns">
+      <button class="primary" onclick="save()">Сохранить</button>
+      <button onclick="resetAll()">Сбросить</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <iframe id="preview" src="index.html?preview=1"></iframe>
+</div>
+<script src="design.js"></script>
+<script>
+let cur = Object.assign({}, DESIGN_DEFAULTS);
+const keys = Object.keys(DESIGN_DEFAULTS);
+const frame = document.getElementById('preview');
+
+function say(t) { document.getElementById('msg').textContent = t; }
+function pushPreview() {
+  try { frame.contentWindow.postMessage({kesha_design: cur}, '*'); } catch (e) {}
+}
+function fill() {
+  keys.forEach(k => {
+    const el = document.getElementById(k); el.value = cur[k];
+    const v = document.getElementById('v-' + k); if (v) v.textContent = cur[k];
+  });
+  pushPreview();
+}
+keys.forEach(k => document.getElementById(k).addEventListener('input', e => {
+  cur[k] = e.target.type === 'range' ? parseFloat(e.target.value) : e.target.value;
+  const v = document.getElementById('v-' + k); if (v) v.textContent = cur[k];
+  pushPreview();
+}));
+frame.addEventListener('load', pushPreview);
+
+function save() {
+  fetch('/api/set', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key: 'design', value: cur})})
+    .then(r => say(r.ok ? 'Сохранено ✔ — применится в окне Кеши' : 'Не удалось сохранить'))
+    .catch(() => say('Нет связи с Кешей — она запущена?'));
+}
+function resetAll() { cur = Object.assign({}, DESIGN_DEFAULTS); fill(); say('Сброшено — нажми «Сохранить»'); }
+
+function loadSaved(d) { if (d && typeof d === 'object') cur = Object.assign({}, DESIGN_DEFAULTS, d); fill(); }
+fetch('/api/settings').then(r => r.json()).then(j => loadSaved(j.design)).catch(() => fill());
+fill();
+</script>
+</body>
+</html>
