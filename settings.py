@@ -18,12 +18,17 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DEFAULTS = {
     "silent": False,         # тихий режим: не говорить вслух, только текст
+    "mic_muted": False,      # микрофон выключен: Кеша не слышит (кнопка-микрофон в окне)
     "language": "ru",        # ru | en — язык ответов и озвучки
     "voice": "male",         # male (eugene) | female (xenia) | robot (Silero, офлайн, ~0.3 с) | google (онлайн, 7–10 с)
     "theme": "dark",         # dark | light — тема десктоп-интерфейса
+    "design": None,          # настройки редактора дизайна десктоп-интерфейса (JSON)
     "sounds": True,          # звуковые эффекты (пики/бупы)
     "floating_icon": True,   # плавающий значок реактора поверх окон
     "float_pos": None,       # [x, y] значка
+    "voice_db": True,        # сохранять сказанное Кеше в data/voice_db (для дообучения)
+    "barge_in": True,        # «Кеша» во время её речи — замолкает и слушает
+    "denoise": False,        # шумодав перед распознаванием (см. voice/denoise.py)
 }
 
 _lock = threading.RLock()

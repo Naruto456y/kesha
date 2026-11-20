@@ -34,6 +34,7 @@ voices_preview/
 kesha_compil/*.exe
 .claude/
 CLAUDE.md
+*.lnk
 alice_skill/ngrok.txt
 
 # Секреты (никогда не коммитить)
@@ -52,3 +53,6 @@ alice_skill/ngrok.txt
 client_secret*.json
 ngrok.txt
 data/telegram_users.json
+
+# лаунчер собирается launcher/build.bat
+/Kesha.exe

@@ -1,9 +1,10 @@
 """Точка входа проекта Кеша."""
 import ctypes
+# один AppUserModelID с ярлыком «Кеша» (tools/install_shortcuts.py): закреплённый значок
+# и окно Кеши — одна кнопка на панели задач, с логотипом Кеши, а не питона
+APP_ID = "Yusuf.Kesha.VoiceAssistant.1.0"
 try:
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-        "Yusuf.Kesha.VoiceAssistant.1.0"
-    )
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
 except Exception:
     pass
 
@@ -14,6 +15,18 @@ import signal
 import sys
 import threading
 import time
+
+# Kesha.exe запускает pythonw — консоли нет, sys.stdout = None. Пишем вывод в logs/console.log.
+if sys.stdout is None or sys.stderr is None:
+    _log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(_log_dir, exist_ok=True)
+    _path = os.path.join(_log_dir, "console.log")
+    if os.path.exists(_path) and os.path.getsize(_path) > 5_000_000:
+        os.replace(_path, _path + ".old")
+    # "a", не "w": вторая копия (клик по значку, когда Кеша уже работает) не затирает лог первой
+    _console = open(_path, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _console
+    sys.stderr = sys.stderr or _console
 
 # Консоль Windows по умолчанию cp1251: print со смайликом (help_manager печатает «✅»)
 # падал с UnicodeEncodeError, и GigaChat в commands.py молча отключался.
@@ -107,9 +120,29 @@ def run_website():
     start_website()
 
 
-def run_desktop():
+def run_desktop(minimized=False):
+    # torch и onnxruntime грузим ДО Qt: Qt 6.9 приносит свой старый msvcp140.dll, и если он
+    # загрузится первым, torch и GigaAM падают с WinError 1114 (голос уходит на Google)
+    for mod in ("torch", "onnxruntime"):
+        try:
+            __import__(mod)
+        except Exception as e:
+            print(f"[main] {mod} не загрузился: {e}")
     from desktop.main import start_desktop
-    start_desktop()
+    start_desktop(minimized)
+
+
+def _show_running_window():
+    """Клик по значку, когда Кеша уже работает: развернуть и показать её окно."""
+    try:
+        from config import DESKTOP_TITLE
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, DESKTOP_TITLE)
+        if hwnd:
+            user32.ShowWindow(hwnd, 9)                          # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
 
 
 def main():
@@ -120,6 +153,7 @@ def main():
     p.add_argument("--web", action="store_true")
     p.add_argument("--desktop", action="store_true")
     p.add_argument("--all", action="store_true")
+    p.add_argument("--minimized", action="store_true", help="окно свернуть (автозагрузка)")
     args = p.parse_args()
 
     no_flags = not any([
@@ -129,16 +163,22 @@ def main():
     run_all = args.all or no_flags
 
     # одна Кеша на ПК: две слушают один микрофон (команды по два раза) и ловят Telegram Conflict
-    global _instance_mutex
+    global _instance_mutex, _shutdown_done
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _instance_mutex = kernel32.CreateMutexW(None, False, "Global\\KeshaAssistant")
     if ctypes.get_last_error() == 183:                        # ERROR_ALREADY_EXISTS
-        print("[main] Кеша уже запущена — вторую копию не запускаю.")
+        print("[main] Кеша уже запущена — вторую копию не запускаю, показываю окно.")
+        _show_running_window()
+        _shutdown_done = True                                 # у копии нечего чистить
         sys.exit(1)
 
     import commands  # noqa: регистрация команд (и фич волн 3–5)
     import features
     features.start_background()   # напоминания, будильники, таймеры
+
+    if args.telegram or run_all:
+        # импорт в главном потоке: параллельный импорт из потоков вешал бота на старте
+        import telegram_bot.bot  # noqa: F401
 
     threads = []
     if args.voice or run_all:
@@ -157,7 +197,7 @@ def main():
     try:
         if args.desktop or run_all:
             try:
-                run_desktop()
+                run_desktop(args.minimized)
             except ImportError as e:
                 print(f"[main] Desktop недоступен ({e}) — работаю без GUI", flush=True)
                 while True:

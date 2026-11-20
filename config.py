@@ -193,6 +193,9 @@ BUILTIN_APPS = {
     "диспетчер задач": "taskmgr.exe", "панель управления": "control.exe",
     "ножницы": "snippingtool.exe", "экранная клавиатура": "osk.exe",
     "экранную клавиатуру": "osk.exe", "лупа": "magnify.exe", "лупу": "magnify.exe",
+    # WhatsApp из Microsoft Store: ярлыка в «Пуске» нет, запускается через AppsFolder
+    **{k: r"shell:AppsFolder\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"
+       for k in ("whatsapp", "whats app", "whatsup", "what s up", "ватсап", "вацап", "ватсапп", "вотсап", "вотсапп")},
 }
 
 # ============================================================
@@ -276,6 +279,11 @@ MIC_ACTIVE_WINDOW = 10
 # отвечает; как у Алисы, чтобы фон не попадал в запись. 0 — не приглушать
 DUCK_LEVEL = 0.2
 MIC_TIMEOUT = 5
+# Видео/музыка на фоне не дают тишины, и фраза писалась до 15 с. После «Кеша» тише твоего
+# голоса на столько dB — уже не ты, а фон: конец фразы. Держим уровень столько секунд.
+VOICE_MARGIN_DB = 14.0
+VOICE_KEEP_SEC = 20.0
+WAKE_SILENCE_SEC = 0.9        # пауза конца команды сразу после «Кеша» (в остальных фразах 0.65 с)
 # Тише этого (dBFS) — не речь, а шум комнаты: webrtcvad срабатывал на −70 dB,
 # и GigaAM впустую распознавал тишину. Речь в логах — от −62 dB и громче.
 MIN_SPEECH_DB = float(os.getenv("MIN_SPEECH_DB", "-64"))
@@ -329,9 +337,16 @@ UNKNOWN_LOG_FILE = LOGS_DIR / "kesha.log"
 # ============================================================
 HOTKEY = "ctrl+space"          # слушать без слова «Кеша»; "" — отключить
 
-# Распознавание команд: "aqua" (Avalon API, нужен AQUA_API_KEY) | "local" (GigaAM офлайн; "vosk" — то же).
-# При сбое Aqua Кеша сама переходит на локальный. Слово-активатор всегда ищется локально.
-STT_ENGINE = "aqua"
+# Obsidian: папка хранилища (features/obsidian.py). По умолчанию Python/notes.
+OBSIDIAN_VAULT = os.getenv("OBSIDIAN_VAULT", "") or str(BASE_DIR.parent.parent / "notes")
+
+# Детектор речи при записи фразы: "silero" (нейросеть, не путает голос с музыкой и стуком клавиш)
+# или "webrtc" (старый). Нет пакета silero-vad — сам откатится на webrtc.
+VAD_ENGINE = "silero"
+SILERO_VAD_THRESHOLD = 0.5     # вероятность речи; выше — строже к фону, ниже — чутче к тихому голосу
+
+# Распознавание речи: только офлайн, GigaAM v3.
+STT_ENGINE = "local"
 
 # Защита. Чёрный список: что Кеша не открывает никогда (по любому каналу).
 SECURITY_BLOCKED_APPS = [

@@ -16,7 +16,9 @@ from dotenv import load_dotenv
 load_dotenv()  # загружаем .env из корня проекта
 
 import contextvars
+import json
 import re
+from pathlib import Path
 import time
 
 import klog
@@ -27,6 +29,9 @@ from ai_cache import cache as ai_cache
 from config import WAKE_WORDS, AI_COMMANDS_MAX_WORDS, AI_MAX_WORDS, AI_FIX_COMMANDS, AI_FIX_MAX_WORDS
 from nlu import (normalize, apply_synonyms, fuzzy_find, is_question, has_negation,
                  has_latin, fix_mixed_script)
+
+
+import corrector
 
 
 # ============================================================
@@ -63,6 +68,50 @@ class CommandRegistry:
 
     def get_all(self):
         return list(self.commands)
+
+    # --- пользовательские паттерны (правятся из UI, хранятся в patterns_user.json) ---
+    OVERRIDES_FILE = Path(__file__).parent / "patterns_user.json"
+    _overrides_loaded = False
+
+    def _rebuild(self, cmd, patterns):
+        lowered = [p.strip().lower() for p in patterns if p.strip()]
+        alternatives = "|".join(re.escape(p) for p in sorted(lowered, key=len, reverse=True))
+        cmd["patterns"] = lowered
+        cmd["regex"] = re.compile(r"\b(?:" + alternatives + r")\b") if lowered else re.compile(r"(?!x)x")
+
+    def ensure_overrides(self):
+        """Один раз применить сохранённые правки паттернов (после регистрации всех команд)."""
+        if self._overrides_loaded or not self.commands:
+            return
+        self._overrides_loaded = True
+        try:
+            data = json.loads(self.OVERRIDES_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        for cmd in self.commands:
+            if cmd["name"] in data:
+                cmd.setdefault("default_patterns", list(cmd["patterns"]))
+                self._rebuild(cmd, data[cmd["name"]])
+
+    def set_patterns(self, name, patterns):
+        """Задать паттерны команды (None — вернуть исходные) и сохранить в файл."""
+        self.ensure_overrides()
+        cmd = next((c for c in self.commands if c["name"] == name), None)
+        if not cmd:
+            return False
+        cmd.setdefault("default_patterns", list(cmd["patterns"]))
+        try:
+            data = json.loads(self.OVERRIDES_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if patterns is None:
+            data.pop(name, None)
+            self._rebuild(cmd, cmd["default_patterns"])
+        else:
+            self._rebuild(cmd, patterns)
+            data[name] = cmd["patterns"]
+        self.OVERRIDES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        return True
 
 
 # Глобальный реестр — единственный на весь проект
@@ -121,6 +170,14 @@ _source = contextvars.ContextVar("kesha_source", default="app")
 
 def current_source() -> str:
     return _source.get()
+
+
+# False — голос без слова «Кеша» (фон, ТВ): опасные команды вроде «пока» не выполняем.
+_woke = contextvars.ContextVar("kesha_woke", default=True)
+
+
+def current_woke() -> bool:
+    return _woke.get()
 
 
 def announce(text: str, title: str = "Кеша", speak: bool = True, notify_user: bool = True):
@@ -214,6 +271,13 @@ def _build_prompt(text: str, context: str, with_commands: bool) -> str:
         parts.append("Отвечай на английском языке.")
     if with_commands:
         parts.append(_AI_RULES + "Команды:\n" + _commands_hint())
+    try:
+        from features import learning
+        known = learning.facts_for_prompt()
+    except Exception:
+        known = ""
+    if known:
+        parts.append("Что ты знаешь о пользователе (используй, если спрашивают про него):\n" + known)
     if context:
         parts.append("Предыдущий диалог:\n" + context)
     parts.append("Фраза пользователя: " + text)
@@ -356,7 +420,8 @@ QUICK_MAX_WORDS = 4
 def quick_control(text: str):
     """Короткая фраза — только команда управления (± одно слово вроде «ну»/«кеш»).
     -> (имя, ответ) или None. Длинную речь (видео, разговор) не трогаем."""
-    q = " ".join(re.sub(r"[^\w\s]", " ", remove_wake_words(text or "")).split())
+    registry.ensure_overrides()
+    q = " ".join(re.sub(r"[^\w\s]", " ", corrector.apply(remove_wake_words(text or ""))).split())
     words = q.split()
     if not words or len(words) > QUICK_MAX_WORDS:
         return None
@@ -457,15 +522,46 @@ def _ask_ai(clean: str, source: str, sess):
     m = _CMD_REPLY.match(answer)
     rewritten = m.group(1).strip(" \"'«»`.").lower() if m else _answer_as_command(answer)
     if rewritten is None:
+        if answer.lower().startswith("не понял"):
+            fb = claude_fallback(clean, source)
+            if fb:
+                return fb
         klog.phrase("UNKNOWN", source, clean, "ответ: " + answer[:80])
         return None, short_answer(answer)
 
     hit = _exact(rewritten, allow_risky=False)
     if hit:
         klog.phrase("AI_CMD", source, clean, f"{rewritten!r} -> {hit[0]['name']}")
+        _learn_fix(clean, rewritten, source)
         return hit
     klog.phrase("UNKNOWN", source, clean, f"AI предложил {rewritten!r}, но команды нет")
-    return None, "Не понял команду."
+    return claude_fallback(clean, source) or (None, "Не понял команду.")
+
+
+CLAUDE_UNKNOWN = True            # команды нет и GigaChat не понял — просьбу выполняет Клод (Haiku)
+CLAUDE_UNKNOWN_WORDS = (2, 12)   # короче — обрывок, длиннее — разговор или фон
+
+
+def claude_fallback(clean: str, source: str = None):
+    """Неизвестная команда -> Клоду. -> (cmd, ответ) или None, если Клоду это не отдаём:
+    фраза без «Кеша» (могла быть фоном), вопрос (на него отвечает GigaChat), обрывок."""
+    if not CLAUDE_UNKNOWN or not current_woke():
+        return None
+    from features import claude_agent
+    if not claude_agent.ENABLED:
+        return None
+    norm = normalize(clean)
+    lo, hi = CLAUDE_UNKNOWN_WORDS
+    if not lo <= len(norm.split()) <= hi or is_question(norm):
+        return None
+    source = source or current_source()
+    item = claude_agent.learned(norm)
+    if item:                                   # Клод уже это делал — повторяем сами
+        klog.phrase("LEARNED", source, clean, item["ps"][:70])
+        return {"name": "learned"}, claude_agent.run_learned(item)
+    task = (f"Пользователь сказал голосовому помощнику: «{clean}». Готовой команды для этого "
+            "нет — пойми, чего он хочет, и сделай это на компьютере.")
+    return _ask_claude(task, clean, source)
 
 
 def _ask_claude(task: str, clean: str, source: str):
@@ -514,7 +610,39 @@ def _ai_fix(clean: str, source: str, sess):
     hit = _exact(rewritten, allow_risky=False)
     if hit:
         klog.phrase("AI_FIX", source, clean, f"{rewritten!r} -> {hit[0]['name']}")
+        _learn_fix(clean, rewritten, source)
     return hit
+
+
+_vocab_cache = (0, frozenset())
+
+
+def _command_vocab():
+    """Слова всех команд и синонимов: такое слово не «ошибка распознавания»."""
+    global _vocab_cache
+    if _vocab_cache[0] != len(registry.commands):
+        from nlu import SYNONYMS
+        words = set()
+        for c in registry.commands:
+            for p in c["patterns"]:
+                words.update(normalize(p).split())
+        for canon, variants in SYNONYMS.items():
+            words.add(canon)
+            words.update(variants.split())
+        _vocab_cache = (len(registry.commands), frozenset(words))
+    return _vocab_cache[1]
+
+
+corrector.vocab = _command_vocab
+
+
+def _learn_fix(heard: str, right: str, source: str):
+    """Пара «услышано -> команда»: со второго раза Кеша чинит её сама, без GigaChat."""
+    try:
+        if corrector.note_fix(heard, right):
+            klog.phrase("LEARNED_FIX", source, heard, f"теперь это «{right}»")
+    except Exception as e:
+        print(f"[corrector] {e}")
 
 
 def _shares_word(a: str, b: str) -> bool:
@@ -525,7 +653,8 @@ def _shares_word(a: str, b: str) -> bool:
 
 # «и» / «потом» / «затем» между двумя командами: каждая часть должна сама быть командой
 _SPLIT_RE = re.compile(r"\s*,?\s*\b(?:а потом|и потом|потом|затем|после этого|а ещё|а еще|и)\b\s*|\s*[,;]\s*")
-NO_SPLIT = {"open_first_link", "add_note", "add_todo", "type_text", "send_message", "translate_free"}
+NO_SPLIT = {"open_first_link", "add_note", "add_todo", "type_text", "send_message", "translate_free",
+            "obsidian_add", "obsidian_idea", "teach_correction", "remember_fact"}
 
 
 def split_commands(clean: str) -> list:
@@ -576,6 +705,21 @@ def _answer_question(clean, source):
     return None
 
 
+# как STT слышит «Клод»: cloud, claude, клауд, клоуд, клаут…
+_CLAUDE_STT = re.compile(r"(?<![\w])(?:cloud|claude|clode|клауд\w*|клоуд\w*|клаут\w*|клод\w*)(?![\w])", re.I)
+_CLAUDE_ASK = re.compile(r"^\s*(?:спроси\s+(?:у\s+)?)?клод\s+(?!открой|запусти|включи|закрой)(.+)$")
+
+
+def _claude_first(clean: str) -> str:
+    """«Cloud» в любом написании -> «клод». «Клод <вопрос>» и «спроси клода <вопрос>» — первыми:
+    уходят нейросети, а не расползаются по другим командам. «Открой клод» остаётся запуском приложения."""
+    if not _CLAUDE_STT.search(clean):
+        return clean
+    text = _CLAUDE_STT.sub("клод", clean)
+    m = _CLAUDE_ASK.match(" ".join(text.lower().replace(",", " ").split()))
+    return "спроси клода " + m.group(1) if m else text
+
+
 def handle_command(text: str, source: str = "app", ai: bool = True) -> str:
     """
     Принимает команду от любого интерфейса.
@@ -585,8 +729,13 @@ def handle_command(text: str, source: str = "app", ai: bool = True) -> str:
     """
     if not text or not text.strip():
         return ""
+    registry.ensure_overrides()
 
-    clean = fix_mixed_script(remove_wake_words(text))
+    clean = _claude_first(fix_mixed_script(remove_wake_words(text)))
+    fixed = corrector.apply(clean)
+    if fixed != clean:
+        klog.phrase("FIXED", source, clean, f"-> {fixed}")
+        clean = fixed
     answer = _answer_question(clean, source)
     if answer is not None:
         klog.phrase("RUN", source, clean, f"ответ на вопрос -> {answer[:70]}")
@@ -605,14 +754,21 @@ def handle_command(text: str, source: str = "app", ai: bool = True) -> str:
         return " ".join(a for a in answers if a)
     sess = session.get(source)
     token = _source.set(source)
+    woke_token = _woke.set(ai)
     try:
         hit = _exact(clean) or _understand(clean, source, sess)
+        if hit:
+            if corrector.note_success(source, clean):
+                klog.phrase("LEARNED_FIX", source, clean, "выучено по повтору непонятой фразы")
+        else:
+            corrector.note_failure(source, clean)
         if not hit and not ai:
             hit = _ai_fix(clean, source, sess)
             if not hit:
                 return ""
         cmd, response = hit if hit else _ask_ai(clean, source, sess)
     finally:
+        _woke.reset(woke_token)
         _source.reset(token)
 
     sess.remember(clean, response, cmd.get("followup") if cmd else None)

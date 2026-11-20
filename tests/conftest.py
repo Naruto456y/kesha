@@ -89,8 +89,15 @@ def isolated_state(tmp_path, monkeypatch, no_real_side_effects):
     monkeypatch.setattr(ai_cache.cache, "path", tmp_path / "ai_cache.json")
     monkeypatch.setattr(ai_cache.cache, "_data", None)
     settings.use_file(tmp_path / "settings.json")
+    settings.set("barge_in", False)          # перебивание проверяют свои тесты, остальным оно мешает
     monkeypatch.setattr(notify, "enabled", False)
     session.reset()
+    import corrector
+    corrector.use_file(tmp_path / "corrections.json")
+    import config
+    monkeypatch.setattr(config, "VAD_ENGINE", "webrtc")      # тесты записи — на синтетике, нейросеть не грузим
+    from voice import voicedb
+    voicedb.use_dir(tmp_path / "voice_db")
 
     try:
         import commands  # noqa: F401  — тот же порядок регистрации, что в main.py
@@ -110,10 +117,17 @@ def isolated_state(tmp_path, monkeypatch, no_real_side_effects):
     monkeypatch.setattr(commands, "_set_volume", lambda level: True)        # громкость ПК не трогаем
     from features import utilities
     monkeypatch.setattr(utilities, "set_mute", lambda on: True)
+    import core
+    monkeypatch.setattr(core, "CLAUDE_UNKNOWN", False)                        # неизвестное -> Клоду: свои тесты
     from features import claude_agent                                         # Клода по-настоящему не зовём
     monkeypatch.setattr(claude_agent, "LEARNED_FILE", tmp_path / "learned_commands.json")
     monkeypatch.setattr(claude_agent, "_run_claude", lambda task: pytest.fail("реальный claude -p в тесте"))
     monkeypatch.setattr(claude_agent, "_run_ps", lambda cmd: None)
+    from features import ticktick                                             # TickTick/Клод в тестах выключены
+    monkeypatch.setattr(ticktick, "ENABLED", False)
+    from features import obsidian, learning                                   # не настоящее хранилище Obsidian
+    monkeypatch.setattr(obsidian, "VAULT", tmp_path / "vault")
+    monkeypatch.setattr(learning, "memory_path", tmp_path / "memory.md")
     from features import robot                                                # робот не ездит
     monkeypatch.setattr(robot, "_post", lambda host, cmd, speed: None)
     monkeypatch.setattr(robot, "_stop_later", lambda sec: None)

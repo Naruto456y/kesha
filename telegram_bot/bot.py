@@ -100,17 +100,31 @@ def start_bot():
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
+    if not TELEGRAM_TOKEN:
+        log.warning("TELEGRAM_TOKEN пуст — Telegram-бот не запущен. "
+                    "Возьмите токен у @BotFather и впишите его в .env")
+        return
     if not TELEGRAM_ALLOWED_IDS:
         log.warning("TELEGRAM_ALLOWED_IDS пуст — бот никому не отвечает. "
                     "Напишите боту, он покажет ваш id, и впишите его в .env")
-    log.info("Запуск Telegram-бота Кеша...")
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("say", cmd_say))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
-    app.add_error_handler(on_error)
-    log.info("Бот запущен.")
-    app.run_polling()
+    import time
+    delay = 5
+    while True:   # сеть/VPN моргнула на старте — не умираем, а пробуем снова
+        try:
+            log.info("Запуск Telegram-бота Кеша...")
+            app = Application.builder().token(TELEGRAM_TOKEN).build()
+            app.add_handler(CommandHandler("start", cmd_start))
+            app.add_handler(CommandHandler("say", cmd_say))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
+            app.add_error_handler(on_error)
+            log.info("Бот запущен.")
+            app.run_polling(stop_signals=None, close_loop=False)
+            return
+        except Exception as e:
+            log.error("Telegram-бот упал (%s), перезапуск через %d с", e, delay)
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            time.sleep(delay)
+            delay = min(delay * 2, 120)
 
 
 if __name__ == "__main__":

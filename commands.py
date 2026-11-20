@@ -13,7 +13,7 @@ import app_index
 import klog
 import persona
 import security
-from core import registry, current_source, ask_yes_no, gig_chat
+from core import registry, current_source, current_woke, ask_yes_no, gig_chat
 
 import os
 import re
@@ -431,6 +431,49 @@ def close_window(text):
 
 
 @registry.command(
+    ["закрой вкладку", "закрыть вкладку", "закрой эту вкладку", "закрой текущую вкладку",
+     "закрой вкладку в браузере", "закрой вклодку", "закрой вкладка"],
+    "Закрыть вкладку браузера", "Система", priority=6, risky=True,
+)
+def close_tab(text):
+    keyboard.send("ctrl+w")
+    return "Вкладка закрыта"
+
+
+@registry.command(
+    ["закрой несколько вкладок", "закрой две вкладки", "закрой три вкладки", "закрой пять вкладок",
+     "закрой все вкладки", "закрой вкладки", "закрыть вкладки"],
+    "Закрыть несколько вкладок", "Система", priority=6, risky=True,
+)
+def close_tabs(text):
+    """«закрой три вкладки» — N раз ctrl+w; «закрой все вкладки» — окно браузера целиком не трогаем,
+    закрываем до 10 вкладок. Без числа — две."""
+    q = text.lower()
+    nums = {"две": 2, "два": 2, "три": 3, "четыре": 4, "пять": 5, "шесть": 6, "семь": 7,
+            "восемь": 8, "девять": 9, "десять": 10}
+    if "все" in q.split():
+        n = 10
+    else:
+        m = re.search(r"\d+", q)
+        n = int(m.group()) if m else next((v for k, v in nums.items() if k in q.split()), 2)
+    n = max(1, min(n, 10))
+    for _ in range(n):
+        keyboard.send("ctrl+w")
+        time.sleep(0.15)
+    return f"Закрыл вкладок: {n}"
+
+
+@registry.command(
+    ["верни вкладку", "открой закрытую вкладку", "восстанови вкладку", "верни закрытую вкладку",
+     "открой последнюю закрытую вкладку"],
+    "Вернуть закрытую вкладку", "Система", priority=6,
+)
+def reopen_tab(text):
+    keyboard.send("ctrl+shift+t")
+    return "Вернул вкладку"
+
+
+@registry.command(
     ["открой проводник", "проводник", "файловый менеджер", "папка", "запусти проводник",
      "открой папку", "открой файлы", "покажи файлы", "открой мой компьютер",
      "открой этот компьютер"],
@@ -659,14 +702,24 @@ def press_enter(text):
     return "Нажал enter"
 
 
+def _is_real_key(combo):
+    try:
+        return all(keyboard.key_to_scan_codes(k) for k in combo.split("+"))
+    except Exception:
+        return False
+
+
 @registry.command(
     _KEY_WORDS,
     "Нажать клавишу", "Система", risky=True,
 )
 def press_key(text):
-    key = _extract_query(text, _KEY_WORDS)
-    if key:
-        key = key_combo(key)
+    spoken = _extract_query(text, _KEY_WORDS)
+    if spoken:
+        key = key_combo(spoken)
+        if not _is_real_key(key):          # «нажми кнопку ок» — это кнопка на экране, а не клавиша
+            from features.click_button import click_by_name
+            return click_by_name(spoken)[1]
         why = security.check_keys(key)
         if why:
             klog.phrase("BLOCKED", current_source(), text, why)
@@ -955,7 +1008,7 @@ def open_yandex_games(text):
 # ============================================================
 
 @registry.command(
-    ["дз", "домашнее задание", "домашка", "домашку", "домашнее", "что задали",
+    ["дз", "дзе", "дезе", "домашнее задание", "домашка", "домашку", "домашнее", "что задали",
      "что задано", "что по дз", "открой дз", "покажи дз", "дз на завтра",
      "что на дом", "задания на дом"],
     "ДЗ", "Учёба",
@@ -1023,6 +1076,57 @@ def open_roblox(text):
     return "Не нашёл Roblox"
 
 
+def _focus_existing_browser():
+    """Вывести на передний план уже открытое окно Яндекс Браузера. True, если нашли."""
+    import ctypes
+    from ctypes import wintypes
+    u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+    k32.OpenProcess.restype = wintypes.HANDLE
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _cb(hwnd, _):
+        if not u32.IsWindowVisible(hwnd) or u32.GetWindowTextLengthW(hwnd) == 0:
+            return True
+        pid = wintypes.DWORD()
+        u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        h = k32.OpenProcess(0x1000, False, pid.value)  # QUERY_LIMITED_INFORMATION
+        if not h:
+            return True
+        buf = ctypes.create_unicode_buffer(520)
+        size = wintypes.DWORD(520)
+        ok = k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+        k32.CloseHandle(h)
+        if ok and os.path.basename(buf.value).lower() == "browser.exe" \
+                and u32.GetWindow(hwnd, 4) == 0:  # GW_OWNER: только главные окна
+            # фоновые/«призрачные» окна (нулевой размер, cloaked, tool-window) не считаем
+            rc = wintypes.RECT()
+            u32.GetWindowRect(hwnd, ctypes.byref(rc))
+            cloaked = ctypes.c_int(0)
+            try:
+                ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), 4)
+            except Exception:
+                pass
+            ex = u32.GetWindowLongW(hwnd, -20)
+            if (not u32.IsIconic(hwnd) and ((rc.right - rc.left) < 200 or (rc.bottom - rc.top) < 150)) \
+                    or cloaked.value or (ex & 0x80):  # WS_EX_TOOLWINDOW
+                return True
+            found.append(hwnd)
+            return False
+        return True
+
+    u32.EnumWindows(_cb, 0)
+    if not found:
+        return False
+    hwnd = found[0]
+    if u32.IsIconic(hwnd):
+        u32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    u32.keybd_event(0x12, 0, 0, 0)  # Alt: разрешает SetForegroundWindow
+    u32.SetForegroundWindow(hwnd)
+    u32.keybd_event(0x12, 0, 2, 0)
+    return True
+
+
 @registry.command(
     ["браузер", "открой браузер", "интернет", "яндекс", "запусти браузер",
      "включи браузер", "открой интернет", "зайди в интернет", "выйти в интернет",
@@ -1030,10 +1134,21 @@ def open_roblox(text):
     "Открыть браузер", "Система", priority=5,
 )
 def open_browser(text):
+    try:
+        if _focus_existing_browser():
+            return "Браузер открыт"
+    except Exception:
+        pass
     path = APP_PATHS.get("яндекс") or APP_PATHS.get("браузер")
-    if path and os.path.exists(path):
-        os.startfile(path)
-    else:
+    exe = r"C:\Program Files\Yandex\YandexBrowser\Application\browser.exe"
+    try:
+        if os.path.exists(exe):
+            subprocess.Popen([exe, "--new-window", "https://yandex.ru"])
+        elif path and os.path.exists(path):
+            os.startfile(path)
+        else:
+            webbrowser.open("https://yandex.ru")
+    except Exception:
         webbrowser.open("https://yandex.ru")
     return "Браузер открыт"
 
@@ -1132,7 +1247,9 @@ def open_app(text):
         if site:
             webbrowser.open(site[1])
             return f"Открываю {site[0]}"
-        return f"Не нашёл приложение «{app}»"
+        import core
+        fb = core.claude_fallback(text)          # «открой своё окно» — не программа, пусть разберётся Клод
+        return fb[1] if fb else f"Не нашёл приложение «{app}»"
     why = security.check_app(name)
     if why:
         klog.phrase("BLOCKED", current_source(), text, why)
@@ -1468,12 +1585,138 @@ def quit_kesha(text):
     """«Кеша, пока» — попрощаться и закрыть программу. Только короткая фраза: слово «пока»
     в обычной речи («пока я был в школе…») и фоновое видео не должны выключать Кешу."""
     import lifecycle
-    if len(text.split()) > 3:
+    if len(text.split()) > 3 or not current_woke():
         return None
     if current_source() not in ("voice", "app"):
         return "До свидания! Закрывать себя удалённо не буду."
     lifecycle.request_exit()
     return "До свидания! Выключаюсь."
+
+
+@registry.command(
+    ["перезагрузи кешу", "перезагрузись", "перезапусти кешу", "перезапустись", "перезапуск кеши",
+     "перезагрузка кеши", "рестарт кеши", "перезагрузи себя", "перезапусти себя"],
+    "Перезапустить Кешу", "Основные", priority=22, risky=True,
+)
+def restart_kesha(text):
+    """Закрыть Кешу и запустить заново (компьютер не трогает)."""
+    import lifecycle
+    if not current_woke():
+        return None
+    if current_source() not in ("voice", "app"):
+        return "Перезапускать себя удалённо не буду."
+    lifecycle.request_exit(restart=True)
+    return "Перезапускаюсь, секунду."
+
+
+# ---------- Wi-Fi: сеть с VPN (Cudy) и без VPN (yusuf) ----------
+WIFI_VPN = "Cudy-A456-5G"
+WIFI_NOVPN = "yusuf 5G"
+
+
+def _wifi_ssid():
+    """Имя текущей Wi-Fi сети или None."""
+    import re as _re
+    import subprocess
+    try:
+        out = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True,
+                             text=True, encoding="oem", errors="replace", timeout=10,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except Exception:
+        return None
+    m = _re.search(r"^\s*SSID\s*:\s*(.+?)\s*$", out, _re.M)
+    return m.group(1) if m else None
+
+
+def _wifi_connect(name, label):
+    import subprocess
+    try:
+        r = subprocess.run(["netsh", "wlan", "connect", f"name={name}"], capture_output=True,
+                           text=True, encoding="oem", errors="replace", timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as e:
+        print(f"[wifi] {e}")
+        return "Не получилось переключить Wi-Fi"
+    if r.returncode != 0:
+        print(f"[wifi] {r.stdout.strip()[:200]}")
+        return f"Не смог подключиться к {label}"
+    return f"Переключаю на Wi-Fi {label}"
+
+
+@registry.command(
+    ["вайфай с впн", "вай фай с впн", "wi-fi с vpn", "wifi с vpn", "вайфай с vpn", "вайфай впн",
+     "включи вайфай с впн", "переключи вайфай на впн", "переключи на вайфай с впн",
+     "подключись к кади", "подключись к cudy", "подключись к кьюди", "вайфай кади"],
+    "Wi-Fi с VPN (Cudy)", "Система", priority=30,
+)
+def wifi_vpn(text):
+    return _wifi_connect(WIFI_VPN, "с VPN")
+
+
+@registry.command(
+    ["вайфай без впн", "вай фай без впн", "wi-fi без vpn", "wifi без vpn", "вайфай без vpn",
+     "включи вайфай без впн", "переключи вайфай без впн", "переключи на вайфай без впн",
+     "подключись к юсуф", "подключись к yusuf", "подключись к юсуфу", "вайфай юсуф"],
+    "Wi-Fi без VPN (yusuf)", "Система", priority=30,
+)
+def wifi_novpn(text):
+    return _wifi_connect(WIFI_NOVPN, "без VPN")
+
+
+@registry.command(
+    ["переключи вайфай", "переключи вай фай", "переключи wi-fi", "переключи wifi",
+     "смени вайфай", "смени сеть", "переключи сеть", "другой вайфай"],
+    "Переключить Wi-Fi между VPN и без VPN", "Система", priority=29,
+)
+def wifi_toggle(text):
+    cur = (_wifi_ssid() or "").lower()
+    if cur == WIFI_VPN.lower():
+        return _wifi_connect(WIFI_NOVPN, "без VPN")
+    return _wifi_connect(WIFI_VPN, "с VPN")
+
+
+_CLAUDE_WORDS = ["спроси клода", "спроси клод", "спроси у клода", "спроси клауда", "спроси клауд",
+                 "спроси у клауда", "спроси claude", "клод скажи", "клод ответь", "клод подскажи",
+                 "клод объясни", "клауд скажи", "клауд ответь", "клауд объясни", "cloud скажи",
+                 "claude скажи", "спроси cloud", "спроси у cloud"]
+
+
+@registry.command(
+    _CLAUDE_WORDS,
+    "Спросить нейросеть Claude (например: «спроси клода сколько километров до луны»)",
+    "Специальные", priority=100,     # первым: выше «спроси» (ask_ai, 40) и всех остальных
+)
+def ask_claude(text):
+    """Вопрос Claude через `claude -p` (подписка, не API-ключ). Ответ короткий — его озвучивают."""
+    import shutil
+    import subprocess
+    import tempfile
+    query = _extract_query(text, _CLAUDE_WORDS + ["клод", "клауд", "claude", "cloud", "у"])
+    if not query:
+        return "Что спросить у Клода?"
+    exe = shutil.which("claude")
+    if not exe:
+        return "Не нашёл Claude Code на компьютере"
+    env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}   # иначе спишутся токены API
+    try:
+        r = subprocess.run(
+            [exe, "-p", query, "--model", "haiku", "--tools", "",
+             "--append-system-prompt",
+             "Ты отвечаешь голосовому помощнику. По-русски, без markdown, списков и эмодзи, "
+             "не длиннее двух коротких предложений."],
+            capture_output=True, text=True, encoding="utf-8", timeout=90,
+            cwd=tempfile.gettempdir(), env=env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        return "Клод долго думает, попробуй ещё раз"
+    except Exception as e:
+        print(f"[ask_claude] {e}")
+        return "Не получилось спросить Клода"
+    ans = (r.stdout or "").strip()
+    if r.returncode != 0 or not ans:
+        print(f"[ask_claude] код {r.returncode}: {(r.stderr or '')[:200]}")
+        return "Клод не ответил"
+    return ans
 
 
 @registry.command(
@@ -1759,6 +2002,19 @@ def start_chaos(text):
 #  СПЕЦИАЛЬНЫЕ
 # ============================================================
 
+def _tr_prompt(lang_name, query):
+    return (f"Переведи текст на {lang_name} язык. Ответь ТОЛЬКО переводом: без пояснений, "
+            f"кавычек и комментариев.\nТекст: {query}")
+
+
+_TR_JUNK = re.compile(r"\s*(?:no explanations?|without explanations?|без пояснений|без объяснений)\.?\s*$", re.I)
+
+
+def _clean_translation(ans):
+    ans = (ans or "").strip().strip('"«»')
+    return _TR_JUNK.sub("", ans).strip().strip('"«»')
+
+
 @registry.command(
     _TR_EN,
     "Перевод RU→EN", "Специальные", priority=6,
@@ -1769,7 +2025,7 @@ def translate_en(text):
         return "Что перевести?"
     if GIGACHAT_AVAILABLE and _gig is not None:
         try:
-            ans = gig_chat(_gig, f"Переведи на английский: {query}. Без объяснений.")
+            ans = _clean_translation(gig_chat(_gig, _tr_prompt("английский", query)))
             return ans.strip() if ans else "Не удалось перевести"
         except Exception as e:
             print(f"[translate_en] {e}")
@@ -1787,7 +2043,7 @@ def translate_ru(text):
         return "Что перевести?"
     if GIGACHAT_AVAILABLE and _gig is not None:
         try:
-            ans = gig_chat(_gig, f"Переведи на русский: {query}. Без объяснений.")
+            ans = _clean_translation(gig_chat(_gig, _tr_prompt("русский", query)))
             return ans.strip() if ans else "Не удалось перевести"
         except Exception as e:
             print(f"[translate_ru] {e}")

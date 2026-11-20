@@ -59,6 +59,14 @@ def _stub_everything(tmp):
     utilities.set_mute = lambda on: True
     from features import claude_agent
     claude_agent.ENABLED = False                   # без Клода и выученных команд
+    import corrector
+    corrector.use_file(tmp / "corrections.json")   # выученные исправления прогон не трогает
+    from voice import voicedb
+    voicedb.use_dir(tmp / "voice_db")
+    from features import obsidian, learning, ticktick
+    obsidian.VAULT = tmp / "vault"                 # не настоящее хранилище Obsidian
+    learning.memory_path = tmp / "memory.md"
+    ticktick.ENABLED = False
     import lifecycle
     lifecycle.request_exit = lambda *a, **k: True      # «пока» не должно закрывать прогон
     import voice
