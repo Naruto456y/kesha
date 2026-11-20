@@ -1,48 +1,47 @@
-requests
-python-dotenv
-help_manager
-AppOpener
-keyboard
-mouse
-psutil
-Pillow
-youtube-search
-gTTS
-pygame
-SpeechRecognition
-pyaudio
-python-telegram-bot
-fastapi
-uvicorn[standard]
-python-multipart
-websockets
-flask
-pycaw
-comtypes
-PyQt6
-PyQt6-WebEngine
+# Минимум для запуска Кеши (без нейросетей): python main.py ставит это сам.
+# Всё тяжёлое (GigaAM, wake word, Silero, OCR) — в requirements-full.txt: python main.py --full
+# Версии проверены на Windows, Python 3.11 и 3.13.
 
-# голос
-onnx-asr[cpu,hub]
-sounddevice
-numpy
-pvporcupine
-openwakeword          # wake word «Кеша»: python tools/train_oww.py all
-scikit-learn          # нужен openwakeword
-webrtcvad-wheels
+pycraft-tools==1.6.0        # help_manager: GigaChat, Manager (база без torch и VLC)
+requests==2.32.3
+python-dotenv==1.2.1
+AppOpener==1.7
+keyboard==0.13.5
+mouse==0.7.1
+psutil==7.0.0
+Pillow==11.2.1
+youtube-search==2.1.2
+gTTS==2.5.4
+pygame==2.6.1
+SpeechRecognition==3.14.3
+PyAudio==0.2.14
+standard-aifc==3.13.0; python_version >= "3.13"     # SpeechRecognition: aifc убрали из Python 3.13
+audioop-lts==0.2.1; python_version >= "3.13"
+python-telegram-bot==22.3
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
+python-multipart==0.0.32
+websockets==15.0.1
+flask==3.1.2
+pycaw==20240210
+comtypes==1.4.11
+pywinauto==0.6.9            # «найди телефон», «нажми кнопку ОК»
 
-# pytest — тесты
-pytest
+# окно Кеши. 6.11 (Chromium 140) течёт: окно с реактором росло на ~5 МБ/с до 1 ГБ. На 6.9 память ровная
+PyQt6==6.9.1
+PyQt6-Qt6==6.9.2
+PyQt6-WebEngine==6.9.0
+PyQt6-WebEngine-Qt6==6.9.2
+
+# голос (лёгкая часть)
+sounddevice==0.5.2
+numpy==2.3.1
+webrtcvad-wheels==2.0.14.post1
+rapidfuzz==3.14.3           # исправление слов и поиск заметок, поиск кнопок
 
 # волны 3–5
-plyer                   # уведомления Windows
-pyttsx3                 # офлайн-голос Windows (запасной)
-icalendar               # календарь: ICS Google/Яндекс
-recurring-ical-events   # повторяющиеся события календаря
-mutagen                 # точная длительность mp3
-# torch                 # для офлайн-голосов Silero (female/male/robot); без него — gTTS/SAPI
-torchaudio              # свой детектор слова «Кеша» (tools/train_wake.py)
-
-# распознавание речи Aqua
-openai
-truststore              # доверять сертификатам Windows (антивирус с перехватом TLS)
+plyer==2.1.0                # уведомления Windows
+pyttsx3==2.99               # офлайн-голос Windows (запасной)
+icalendar==7.3.0            # календарь: ICS Google/Яндекс
+recurring-ical-events==3.8.2
+mutagen==1.48.1             # точная длительность mp3

@@ -1,0 +1,13 @@
+# Полная установка: python main.py --full (несколько ГБ, тянет torch).
+-r requirements.txt
+
+pycraft-tools[vision,music]==1.6.0   # ScreenReader (OCR, кнопка Моей волны), плеер Music (+ VLC 64-bit)
+onnx-asr[cpu,hub]==0.12.0            # распознавание GigaAM (модель качается с huggingface.co)
+pvporcupine==4.0.2
+openwakeword==0.6.0                  # wake word «Кеша»: python tools/train_oww.py all
+scikit-learn==1.9.0                  # нужен openwakeword
+silero-vad==6.2.3                    # нейросетевой детектор речи (voice/silero_gate.py)
+torch==2.11.0                        # офлайн-голоса Silero (female/male/robot)
+torchaudio==2.11.0                   # свой детектор слова «Кеша» (tools/train_wake.py)
+
+pytest==8.4.1                        # тесты
