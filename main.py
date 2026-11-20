@@ -25,6 +25,10 @@ for _stream in (sys.stdout, sys.stderr):
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+# чистый комп: создать .venv, поставить зависимости и перезапуститься оттуда (--full — с нейросетями)
+import bootstrap
+bootstrap.ensure()
+
 import psutil
 
 
