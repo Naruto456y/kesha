@@ -22,7 +22,7 @@ import wave
 import numpy as np
 
 from config import SILERO_MODEL_PATH, SILERO_SPEAKERS, SILERO_SAMPLE_RATE, TTS_SLOW
-from .text_norm import latin_to_ru, normalize_for_tts
+from .text_norm import apply_stress, latin_to_ru, normalize_for_tts
 
 VOICES = ("google", "female", "male", "robot")
 GOOGLE_TIMEOUT = 4      # с; gTTS из России отвечает 7–10 с — дольше ждать незачем, есть SAPI
@@ -124,13 +124,15 @@ def _chunks(text, limit=SILERO_MAX_CHARS):
 
 def synth_silero(text, voice="female"):
     # латиницу не отдаём в gTTS (там другой голос) — читаем её по-русски
-    clean = normalize_for_tts(latin_to_ru(text))
+    clean = apply_stress(normalize_for_tts(latin_to_ru(text)))
     if not re.search(r"[а-яА-ЯёЁ]", clean):
         raise ValueError("нечего озвучивать")
     model = load_silero()
     speaker = SILERO_SPEAKERS.get(voice, "xenia")
     pieces = []
-    with _silero_lock:
+    import torch
+    # oneDNN кэширует примитивы под каждую длину фразы и не отдаёт: +1.5 МБ на фразу навсегда
+    with _silero_lock, torch.backends.mkldnn.flags(enabled=False):
         for part in _chunks(clean):
             pieces.append(model.apply_tts(text=part, speaker=speaker, sample_rate=SILERO_SAMPLE_RATE).numpy())
     samples = np.concatenate(pieces).astype(np.float32)

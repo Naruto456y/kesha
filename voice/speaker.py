@@ -131,6 +131,25 @@ class Speaker:
                 pass
         _remove(fn)
 
+    def stop(self):
+        """Замолчать на полуслове (перебили голосом или клавишей). True — было что прерывать."""
+        with self._lock:
+            was = self.is_speaking or time.time() < self.mic_blocked_until
+            self._gen += 1                 # фраза, которая ещё генерируется, уже не прозвучит
+            self.is_speaking = False
+            self.mic_blocked_until = 0.0
+        try:
+            pygame.mixer.music.stop()
+            pygame.mixer.music.unload()
+        except Exception:
+            pass
+        return was
+
+    def speech_left(self):
+        """Сколько секунд Кеша ещё будет говорить (микрофон закрыт)."""
+        with self._lock:
+            return max(0.0, self.mic_blocked_until - time.time())
+
     def block_mic(self, seconds):
         """Закрыть микрофон на seconds (пока играет звуковой эффект)."""
         with self._lock:
@@ -145,3 +164,11 @@ speaker = Speaker()
 say = speaker.say
 is_speaking = lambda: speaker.is_speaking
 is_mic_blocked = speaker.is_mic_blocked
+stop_speaking = speaker.stop
+speech_left = speaker.speech_left
+
+
+def mic_closed():
+    """Микрофон не слушаем: Кеша говорит сама или пользователь выключил микрофон кнопкой."""
+    import settings
+    return speaker.is_mic_blocked() or bool(settings.get("mic_muted"))

@@ -197,12 +197,11 @@ class OwwWakeDetector:
     def wait_for_wake(self, timeout=None, should_pause=None, on_wake=None):
         """on_wake() — приглушить звук и «бульк»: делаем это в потоке, а микрофон дальше пишем
         в wake_audio. Иначе «Кеша, открой браузер» одним духом теряло начало команды."""
-        import sounddevice as sd
+        from .mic import open_stream
         self._stop = False
         deadline = None if timeout is None else time.time() + timeout
         self.reset()
-        with sd.RawInputStream(samplerate=RATE, blocksize=CHUNK, channels=1,
-                               dtype="int16", device=self.device) as stream:
+        with open_stream(RATE, CHUNK, self.device) as stream:
             while not self._stop:
                 if deadline is not None and time.time() > deadline:
                     return False

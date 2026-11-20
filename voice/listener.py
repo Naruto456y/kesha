@@ -10,11 +10,13 @@ import time
 import persona
 import klog
 from core import handle_command, quick_control
-from config import WAKE_WORDS, MIC_ACTIVE_WINDOW, HOTKEY, STT_ENGINE
+from config import WAKE_WORDS, MIC_ACTIVE_WINDOW, HOTKEY
 from state_manager import State, set_state
-from .speaker import say, is_mic_blocked
+from .speaker import say, is_mic_blocked, mic_closed, stop_speaking, speech_left
 from . import sfx
 from . import duck
+from . import mic
+from . import voicedb
 from .loudness import ShoutDetector, speech_db as speech_level
 from wake_text import addressed_to_other, near_kesha, has_wake as _has_wake, strip_wake as _clean, from_last_wake as _from_last_wake
 
@@ -24,6 +26,10 @@ SHOUT_REPLY = "Не ори на меня, я и так прекрасно слы
 # без «Кеша» длинная фраза — это фон (видео, разговор), а не команда:
 # «экономить на том сверни вниз… я перестал платить…» сворачивало окно
 BACKGROUND_MAX_WORDS = 6
+# перебили Кешу и сказали только это — просто замолчать, команду не искать
+BARGE_STOP = {"стоп", "стой", "хватит", "замолчи", "помолчи", "тихо", "тише", "молчи", "все", "всё",
+              "достаточно", "понял", "понятно", "заткнись", "остановись"}
+BARGE_MIN_LEFT = 0.6        # короче — фраза и так сейчас закончится
 _ERROR_PREFIXES = ("Не понял", "Ошибка", "Не удалось", "Не нашёл", "Не буду")
 
 _current = None             # работающий VoiceLoop — для arm() из UI
@@ -43,6 +49,7 @@ class VoiceLoop:
         self._armed_at = None
         self._arm_lock = threading.Lock()
         self._last_audio = b""
+        self._barged = None          # звук с «Кеша», которым её перебили: начало следующей команды
 
     # ---------- активация без слова ----------
     def arm(self):
@@ -50,6 +57,11 @@ class VoiceLoop:
         Если звенит будильник — сначала выключаем его."""
         if sfx.alarm_stop():
             return
+        import settings
+        if settings.get("mic_muted"):         # микрофон выключен кнопкой — не слушаем
+            return
+        if stop_speaking():                   # клавиша во время ответа — Кеша замолкает и слушает
+            klog.phrase("BARGE", "voice", "(клавиша)", "перебили ответ")
         stamp = time.time()
         with self._arm_lock:
             self._armed_at = stamp
@@ -92,14 +104,46 @@ class VoiceLoop:
         set_state(State.SPEAKING, text=text)
         say(text)
         time.sleep(0.05)
+        if self._can_barge(text) and self._wait_barge():
+            return
         while is_mic_blocked():
             time.sleep(0.05)
 
+    def _can_barge(self, text):
+        """Перебивание словом «Кеша»: нужен детектор, который слушает сам (openWakeWord).
+        Если Кеша сама произносит своё имя — не слушаем, иначе перебьёт сама себя."""
+        import settings
+        return (settings.get("barge_in") and self.ww is not None
+                and getattr(self.ww, "supports_on_wake", False) and not _has_wake(text or ""))
+
+    def _wait_barge(self):
+        """Пока Кеша говорит, ждём «Кеша» из микрофона. Услышали — замолкаем, а звук с этого
+        места становится началом следующей команды («Кеша, стоп», «Кеша, сделай тише»)."""
+        import settings
+        left = speech_left()
+        if left < BARGE_MIN_LEFT:
+            return False
+        muted = lambda: bool(settings.get("mic_muted"))     # noqa: E731
+        try:
+            heard = self.ww.wait_for_wake(timeout=left, should_pause=muted,
+                                          on_wake=lambda: (stop_speaking(), self._on_wake()))
+        except Exception as e:
+            print(f"[voice] перебивание: {e}")
+            return False
+        if not heard:
+            return False
+        stop_speaking()
+        pre = getattr(self.ww, "wake_audio", None)
+        self._barged = pre.tobytes() if pre is not None and len(pre) else b""
+        klog.phrase("BARGE", "voice", "(голос)", "перебили ответ словом «Кеша»")
+        return True
+
     def _recognize(self, audio, local=False):
-        """local=True — поиск слова-активатора: только офлайн, в Aqua уходит запись после активации."""
-        if local and hasattr(self.rec, "local"):
-            with _stt_lock:
-                return self.rec.local.recognize(audio)
+        """local — поиск слова-активатора (оставлен для совместимости: распознавание всегда офлайн)."""
+        import settings
+        if settings.get("denoise") and not local:
+            from .denoise import denoise
+            audio = denoise(audio)
         return self.rec.recognize(audio)
 
     def _listen(self, max_wait, passive=False, start_audio=None):
@@ -109,9 +153,9 @@ class VoiceLoop:
         if not passive:
             set_state(State.LISTENING)
         if start_audio:
-            audio = self.vad.record(max_wait=max_wait, should_pause=is_mic_blocked, start_audio=start_audio)
+            audio = self.vad.record(max_wait=max_wait, should_pause=mic_closed, start_audio=start_audio)
         else:
-            audio = self.vad.record(max_wait=max_wait, should_pause=is_mic_blocked)
+            audio = self.vad.record(max_wait=max_wait, should_pause=mic_closed)
         self._last_audio = audio or b""
         if not audio:
             return ""
@@ -132,9 +176,12 @@ class VoiceLoop:
         text = self._recognize(audio, local=passive)
         print(f"[voice] услышал: {text!r}")
         info = getattr(self.vad, "last_info", None) or {}
+        lost = mic.take_overflows()
         klog.phrase("HEARD", "voice", text or "(пусто)",
                     f"{info.get('duration_sec', 0):.1f} с, wake={'да' if _has_wake(text) else 'нет'}"
-                    f"{', ' + str(round(speech_level(audio), 1)) + ' dB' if audio else ''}")
+                    f"{', ' + str(round(speech_level(audio), 1)) + ' dB' if audio else ''}"
+                    f"{', фон ' + str(info['noise_db']) + ' dB' if info.get('noise_db') is not None else ''}"
+                    f"{f', микрофон терял звук {lost} раз' if lost else ''}")
         return text
 
     def _process(self, cmd, ai=True):
@@ -160,11 +207,22 @@ class VoiceLoop:
         не должна через GigaChat превращаться в действия."""
         wait, ai = first_wait, first_ai
         while True:
+            barged = self._barged is not None
+            if barged:            # Кешу перебили: слушаем команду сразу, как после «Кеша»
+                start_audio, self._barged = self._barged or None, None
+                wait, ai = WAKE_LISTEN_TIMEOUT, True
             if not ai:
                 duck.restore()    # команда выполнена — 10 с ожидания следующей идут с обычной громкостью
             text = self._listen(wait, start_audio=start_audio)
             if not text:
+                if barged:
+                    wait, ai, start_audio = MIC_ACTIVE_WINDOW, False, None
+                    continue      # перебили и молчат — окно команд остаётся открытым
                 return
+            if barged and _clean(_from_last_wake(text) or text) in BARGE_STOP:
+                start_audio = None
+                wait, ai = MIC_ACTIVE_WINDOW, False
+                continue          # «Кеша, стоп» — она уже замолчала
             if start_audio:
                 # в записи есть и речь до «Кеша» — берём с последнего слова-активатора
                 start_audio = None
@@ -174,6 +232,8 @@ class VoiceLoop:
             else:
                 cmd = _clean(text)
             woke = ai or _has_wake(text) or self._take_arm()
+            if woke and cmd:
+                voicedb.save("command", self._last_audio, cmd)
             if addressed_to_other(cmd):
                 klog.phrase("IGNORED", "voice", cmd, "это Алисе (или другому помощнику), не Кеше")
             elif cmd and not woke and len(cmd.split()) > BACKGROUND_MAX_WORDS:
@@ -216,9 +276,9 @@ class VoiceLoop:
             if self._armed_at is not None:
                 heard = False
             elif getattr(self.ww, "supports_on_wake", False):
-                heard = self.ww.wait_for_wake(should_pause=is_mic_blocked, on_wake=on_wake)
+                heard = self.ww.wait_for_wake(should_pause=mic_closed, on_wake=on_wake)
             else:
-                heard = self.ww.wait_for_wake(should_pause=is_mic_blocked)
+                heard = self.ww.wait_for_wake(should_pause=mic_closed)
             if self._take_arm():
                 self._active_window(ARM_TIMEOUT)
                 return
@@ -237,6 +297,7 @@ class VoiceLoop:
         if text and self._take_arm(started):
             cmd = _clean(text)
             if cmd:
+                voicedb.save("command", self._last_audio, cmd)
                 self._process(cmd)
             self._active_window(MIC_ACTIVE_WINDOW, first_ai=False)
             return
@@ -248,6 +309,7 @@ class VoiceLoop:
         self._on_wake()
         cmd = _clean(text)
         if cmd:
+            voicedb.save("command", self._last_audio, cmd)
             self._process(cmd)
             self._active_window(MIC_ACTIVE_WINDOW, first_ai=False)
         else:
@@ -294,7 +356,7 @@ def _legacy_loop():
     while True:
         try:
             while True:
-                if is_mic_blocked():
+                if mic_closed():
                     time.sleep(0.1)
                     continue
                 t = rec.listen(timeout=10)
@@ -307,7 +369,7 @@ def _legacy_loop():
                     say(r)
             start = time.time()
             while time.time() - start < MIC_ACTIVE_WINDOW:
-                if is_mic_blocked():
+                if mic_closed():
                     time.sleep(0.1)
                     continue
                 c = rec.listen(timeout=1)
@@ -333,6 +395,8 @@ def _gigaam_verify(rec):
         with _stt_lock:
             text = local.recognize(pcm.tobytes())
         ok = _has_wake(text) or (peak >= 0.9 and near_kesha(text))
+        # в базу голоса: подтверждённое «Кеша» и трудные «не Кеша» — для дообучения детектора
+        voicedb.save("wake_pos" if ok else "wake_neg", pcm, text, score=float(peak))
         if ok:   # «нет» не печатаем: на любой речи рядом их десятки
             print(f"[voice] wake word подтверждён: {text!r} (пик {peak:.2f})")
         return ok
@@ -351,7 +415,7 @@ def _quick_phrases(rec, loop_ref):
             try:
                 with _stt_lock:
                     text = local.recognize(pcm.tobytes())
-                if text and not _has_wake(text) and loop_ref():
+                if text and not _has_wake(text) and loop_ref() and not mic_closed():
                     loop_ref()._quick(text)
             except Exception as e:
                 print("[voice] быстрая команда:", e)
@@ -398,13 +462,6 @@ def start_voice_loop():
         from .gigaam_recognizer import GigaAMRecognizer
         from .vad_recorder import VADRecorder
         rec = GigaAMRecognizer()
-        if STT_ENGINE == "aqua":
-            import aqua_stt
-            if aqua_stt.available():
-                rec = aqua_stt.AquaRecognizer(rec)
-                print("[voice] STT: Aqua Avalon (запасной — GigaAM)")
-            else:
-                print("[voice] STT: AQUA_API_KEY не задан, работаю на GigaAM")
         vad = VADRecorder()
     except Exception as e:
         print(f"[voice] новый стек недоступен ({e}), запускаю старый Google-распознаватель")
@@ -412,6 +469,10 @@ def start_voice_loop():
         _legacy_loop()
         return
 
+    try:
+        mic.start_shared(vad.device)
+    except Exception as e:
+        print(f"[voice] общий микрофон не запустился ({e}), каждый открывает свой поток")
     ww = _pick_wake_detector(rec)
     _register_hotkey()
     VoiceLoop(rec, vad, ww).run()

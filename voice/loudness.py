@@ -13,14 +13,14 @@ from config import SHOUT_DB, SHOUT_MARGIN_DB
 FRAME = 480   # 30 мс при 16 кГц
 
 
-def speech_db(pcm_bytes: bytes) -> float:
+def speech_db(pcm_bytes: bytes, pct=80) -> float:
     """Уровень речи: 80-й перцентиль громкости кадров (паузы не тянут вниз)."""
     pcm = np.frombuffer(pcm_bytes[: len(pcm_bytes) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768.0
     if len(pcm) < FRAME:
         return -120.0
     frames = pcm[: len(pcm) // FRAME * FRAME].reshape(-1, FRAME)
     rms = np.sqrt(np.mean(frames * frames, axis=1)) + 1e-9
-    return float(np.percentile(20 * np.log10(rms), 80))
+    return float(np.percentile(20 * np.log10(rms), pct))
 
 
 class ShoutDetector:

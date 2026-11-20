@@ -134,3 +134,50 @@ def _latin_word(m):
 def latin_to_ru(text: str) -> str:
     """«Открываю YouTube» -> «Открываю ютуб», «VS Code» -> «вэ эс код»."""
     return re.sub(r"[A-Za-z]+", _latin_word, text)
+
+
+# ---------- ударения (словарь пользователя) ----------
+# stress_user.json: {"ясеневая": "я+сеневая"} — знак «+» ставится перед ударной гласной.
+# Работает только в Silero; gTTS/SAPI знак «+» не понимают.
+import json as _json
+import os as _os
+
+_STRESS_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "stress_user.json")
+_stress_cache = {"mtime": None, "words": {}}
+
+
+def load_stress(path=None):
+    """Словарь ударений; перечитывается, если файл изменился."""
+    path = path or _STRESS_FILE
+    try:
+        mtime = _os.path.getmtime(path)
+    except OSError:
+        return {}
+    if _stress_cache.get("path") != path or _stress_cache["mtime"] != mtime:
+        try:
+            with open(path, encoding="utf-8") as f:
+                raw = _json.load(f)
+            words = {str(k).lower(): str(v) for k, v in raw.items() if "+" in str(v)}
+        except Exception:
+            words = {}
+        _stress_cache.update(path=path, mtime=mtime, words=words)
+    return _stress_cache["words"]
+
+
+def apply_stress(text: str, path=None) -> str:
+    words = load_stress(path)
+    if not words:
+        return text
+
+    def repl(m):
+        w = m.group(0)
+        fixed = words.get(w.lower())
+        if not fixed:
+            return w
+        return fixed[:1].upper() + fixed[1:] if w[:1].isupper() else fixed
+
+    return re.sub(r"[А-Яа-яЁё]+", repl, text)
+
+
+def strip_stress(text: str) -> str:
+    return text.replace("+", "")

@@ -215,3 +215,31 @@ def test_vad_continues_start_audio(monkeypatch):
     rec.min_db = -200
     audio = rec.record(max_wait=1, start_audio=loud)
     assert audio.startswith(loud[:960]) and rec.last_info["stopped_by"] == "silence"
+
+
+def test_vad_keeps_start_audio_while_sfx_blocks_mic(monkeypatch):
+    """«Кеша, громче» одним духом: пока играет «бульк», записанное начало не выбрасываем."""
+    from voice import vad_recorder
+    loud = (np.sin(np.arange(480 * 20) / 3) * 8000).astype(np.int16).tobytes()
+    quiet = bytes(960)
+
+    class Stream:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return (quiet, False)
+
+    monkeypatch.setattr(vad_recorder.sd, "RawInputStream", Stream)
+    rec = vad_recorder.VADRecorder()
+    rec._is_speech = lambda f: f != quiet
+    rec.min_db = -200
+    blocked = iter([True] * 10)
+    audio = rec.record(max_wait=1, start_audio=loud, should_pause=lambda: next(blocked, False))
+    assert audio.startswith(loud[:960]) and rec.last_info["stopped_by"] == "silence"
