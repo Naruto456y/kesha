@@ -46,22 +46,28 @@
 ## 📦 Требования
 
 - Windows 10/11 (используются `pycaw`, ярлыки `.lnk`, `ctypes.windll`)
-- Python **3.10+** (разрабатывалось на 3.13)
+- Python **3.11+** (проверено на 3.11 и 3.13)
 - Микрофон и динамики
 
 ---
 
 ## ⚙️ Установка
 
+Одна команда, руками ничего ставить не надо:
+
 ```bash
 git clone https://github.com/Naruto456y/kesha.git
 cd kesha
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+python main.py
 ```
 
-Модель GigaAM скачивается в `models/gigaam/` — можно заранее: `python tests/manual/download_gigaam.py`.
+При первом запуске [bootstrap.py](bootstrap.py) видит, что пакетов нет, создаёт `.venv` в папке проекта, ставит туда [requirements.txt](requirements.txt) (без нейросетей, несколько минут) и перезапускает Кешу уже из `.venv`. Дальше `python main.py` запускается сразу. Если пакеты и так стоят, ничего не ставится.
+
+```bash
+python main.py --full       # плюс нейросети: GigaAM, wake word, Silero, OCR (несколько ГБ, torch)
+```
+
+Без `--full` голос распознаётся через Google, а озвучка идёт через gTTS. Что ставит `--full`: [requirements-full.txt](requirements-full.txt). Модель GigaAM скачивается с huggingface.co в `models/gigaam/`. Если сеть его режет (школа), задай перед запуском зеркало: `$env:HF_ENDPOINT="https://hf-mirror.com"`. Плееру Music нужен ещё [VLC 64-bit](https://www.videolan.org/).
 Для сборки `Kesha.exe`: `pip install -r requirements-dev.txt`.
 
 ### Секреты
